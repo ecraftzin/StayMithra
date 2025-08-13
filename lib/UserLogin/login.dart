@@ -42,33 +42,14 @@ class SignInPage extends StatelessWidget {
                               horizontal: width * 0.06,
                               vertical: height * 0.03,
                             ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  "staymithra",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: width * 0.065,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Row(
-                                  children: [
-                                    Text(
-                                      "English",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: width * 0.04,
-                                      ),
-                                    ),
-                                    Icon(Icons.keyboard_arrow_down,
-                                        color: Colors.white, size: width * 0.06),
-                                  ],
-                                )
-                              ],
-                            ),
+                            child:Center(
+  child: Image.asset(
+    'assets/logo/staymithra_logo.png', // change to your logo path
+    height: height * 0.06, // adjust size
+    fit: BoxFit.contain,
+  ),
+),
+
                           ),
 
                           SizedBox(height: height * 0.02),

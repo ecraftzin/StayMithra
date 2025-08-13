@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-
-
 class EditProfilePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -40,24 +38,24 @@ class EditProfilePage extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         // Back button
-                       InkWell(
-  onTap: () => Navigator.pop(context),
-  child: CircleAvatar(
-    radius: screenWidth * 0.05,
-    backgroundColor: Colors.white,
-    child: Icon(Icons.arrow_back, color: Colors.black, size: iconSize),
-  ),
-),
+//                        InkWell(
+//   onTap: () => Navigator.pop(context),
+//   child: CircleAvatar(
+//     radius: screenWidth * 0.05,
+//     backgroundColor: Colors.white,
+//     child: Icon(Icons.arrow_back, color: Colors.black, size: iconSize),
+//   ),
+// ),
 
                         // Edit profile text
-                        Text(
-                          "Edit profile",
-                          style: TextStyle(
-                            fontSize: screenWidth * 0.05,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                        // Text(
+                        //   "Edit profile",
+                        //   style: TextStyle(
+                        //     fontSize: screenWidth * 0.05,
+                        //     fontWeight: FontWeight.bold,
+                        //     color: Colors.white,
+                        //   ),
+                        // ),
                         // Check icon (for saving changes)
                         Icon(Icons.check, color: Colors.white, size: iconSize),
                       ],
@@ -67,7 +65,7 @@ class EditProfilePage extends StatelessWidget {
                   // Profile photo
                   CircleAvatar(
                     radius: avatarSize,
-                    backgroundImage: const NetworkImage("https://i.imgur.com/QCNbOAo.png"),
+                    backgroundImage: const AssetImage('assets/images/marvel.png')
                   ),
                   SizedBox(height: verticalPadding),
                   // Change profile photo text

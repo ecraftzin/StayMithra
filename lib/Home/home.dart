@@ -3,7 +3,6 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:staymitra/Camping/camping.dart';
 import 'package:staymitra/SearchUsers/search.dart';
 
-
 class StaymithraHomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -48,7 +47,6 @@ class StaymithraHomePage extends StatelessWidget {
 
 class PostCardWidget extends StatelessWidget {
   final double screenWidth;
-
   const PostCardWidget({super.key, required this.screenWidth});
 
   @override
@@ -141,18 +139,16 @@ class PostCardWidget extends StatelessWidget {
               ],
             ),
           ),
-
           // Image
           ClipRRect(
             borderRadius: BorderRadius.circular(screenWidth * 0.02),
-            child: Image.network(
-              'https://m.media-amazon.com/images/I/81e1IWtwFQL._UF1000,1000_QL80_.jpg',
+            child: Image.asset(
+              'assets/images/home.png',
               width: double.infinity,
               height: screenWidth * 1.1,
               fit: BoxFit.cover,
             ),
           ),
-
           // Description
           Padding(
             padding: EdgeInsets.all(screenWidth * 0.035),

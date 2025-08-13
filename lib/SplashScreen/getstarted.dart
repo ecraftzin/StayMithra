@@ -16,41 +16,6 @@ class GetStartedPage extends StatelessWidget {
               fit: BoxFit.cover,
             ),
           ),
-
-          // Top: Get Started + Language
-          Positioned(
-            top: 40,
-            left: 20,
-            right: 20,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Get Started',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                  ),
-                ),
-                Row(
-                  children: [
-                    Text(
-                      'English',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                      ),
-                    ),
-                    Icon(
-                      Icons.keyboard_arrow_down,
-                      color: Colors.white,
-                    )
-                  ],
-                )
-              ],
-            ),
-          ),
-
           // Bottom Card
           Align(
             alignment: Alignment.bottomCenter,
@@ -68,7 +33,7 @@ class GetStartedPage extends StatelessWidget {
                     "Ready to explore\nbeyond boundaries?",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 20,
+                      fontSize: 30,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF1B4965),
                     ),

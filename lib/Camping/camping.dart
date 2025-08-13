@@ -27,15 +27,15 @@ class UploadPage extends StatelessWidget {
         child: SafeArea(
           child: Stack(
             children: [
-              // Back button
-             InkWell(
-  onTap: () => Navigator.pop(context),
-  child: CircleAvatar(
-    radius: screenWidth * 0.05,
-    backgroundColor: Colors.white,
-    child: Icon(Icons.arrow_back, color: Colors.black, size: iconSize),
-  ),
-),
+//               // Back button
+//              InkWell(
+//   onTap: () => Navigator.pop(context),
+//   child: CircleAvatar(
+//     radius: screenWidth * 0.05,
+//     backgroundColor: Colors.white,
+//     child: Icon(Icons.arrow_back, color: Colors.black, size: iconSize),
+//   ),
+// ),
               // Main content
               Align(
                 alignment: Alignment.center,

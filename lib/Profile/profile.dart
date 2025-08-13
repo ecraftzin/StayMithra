@@ -5,8 +5,6 @@ class ProfilePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    double iconSize = screenWidth * 0.06;
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
@@ -33,23 +31,23 @@ class ProfilePage extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                     InkWell(
-  onTap: () => Navigator.pop(context),
-  child: CircleAvatar(
-    radius: screenWidth * 0.05,
-    backgroundColor: Colors.white,
-    child: Icon(Icons.arrow_back, color: Colors.black, size: iconSize),
-  ),
-),
+//                      InkWell(
+//   onTap: () => Navigator.pop(context),
+//   child: CircleAvatar(
+//     radius: screenWidth * 0.05,
+//     backgroundColor: Colors.white,
+//     child: Icon(Icons.arrow_back, color: Colors.black, size: iconSize),
+//   ),
+// ),
 
-                      Text(
-                        "Profile",
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.05,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
+                      // Text(
+                      //   "Profile",
+                      //   style: TextStyle(
+                      //     fontSize: screenWidth * 0.05,
+                      //     fontWeight: FontWeight.bold,
+                      //     color: Colors.white,
+                      //   ),
+                      // ),
                       IconButton(onPressed: (){
                      Navigator.push(context, MaterialPageRoute(builder: (context)=>EditProfilePage()));
                       }, 
@@ -60,7 +58,7 @@ class ProfilePage extends StatelessWidget {
                 SizedBox(height: screenHeight * 0.015),
                 CircleAvatar(
                   radius: screenWidth * 0.18, // responsive avatar size
-                  backgroundImage: const NetworkImage("https://i.imgur.com/QCNbOAo.png"),
+                  backgroundImage: const AssetImage('assets/images/marvel.png'),
                 ),
                 SizedBox(height: screenHeight * 0.015),
                 Text(
