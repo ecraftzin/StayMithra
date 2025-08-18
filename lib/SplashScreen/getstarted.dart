@@ -21,15 +21,15 @@ class GetStartedPage extends StatelessWidget {
             alignment: Alignment.bottomCenter,
             child: Container(
               width: double.infinity,
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 30),
-              decoration: BoxDecoration(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
+              decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
+                  const Text(
                     "Ready to explore\nbeyond boundaries?",
                     textAlign: TextAlign.center,
                     style: TextStyle(
@@ -38,21 +38,21 @@ class GetStartedPage extends StatelessWidget {
                       color: Color(0xFF1B4965),
                     ),
                   ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   ElevatedButton.icon(
                     onPressed: () {
-                      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=> SignInPage()));
+                      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=> const SignInPage()));
                     },
-                    icon: Icon(Icons.flight_takeoff),
-                    label: Text("Your Journey Starts Here"),
+                    icon: const Icon(Icons.flight_takeoff),
+                    label: const Text("Your Journey Starts Here"),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFF007F99),
+                      backgroundColor: const Color(0xFF007F99),
                       foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30),
                       ),
-                      textStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],

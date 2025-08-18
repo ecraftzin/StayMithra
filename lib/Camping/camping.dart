@@ -220,9 +220,9 @@ class _UploadFormState extends State<UploadForm> {
     );
   }
 },
-             icon: Icon(Icons.upload, color: Colors.white, size: 50,)),
-            SizedBox(height: 8),
-            Text(
+             icon: const Icon(Icons.upload, color: Colors.white, size: 50,)),
+            const SizedBox(height: 8),
+            const Text(
               "Upload",
               style: TextStyle(
                 fontSize: 18,

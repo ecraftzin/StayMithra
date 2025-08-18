@@ -125,7 +125,7 @@ class ForgotPasswordPage extends StatelessWidget {
             Container(
               width: size.width,
               height: size.height,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
                     Color.fromARGB(255, 0, 126, 140), // Start color
@@ -178,9 +178,11 @@ class ForgotPasswordPage extends StatelessWidget {
 }
 
 class Logo extends StatelessWidget {
+  const Logo({super.key});
+
   @override
   Widget build(BuildContext context) {
-    return Text(
+    return const Text(
       'staymithra',
       style: TextStyle(
         fontSize: 32,
@@ -192,16 +194,18 @@ class Logo extends StatelessWidget {
 }
 
 class ForgotPasswordText extends StatelessWidget {
+  const ForgotPasswordText({super.key});
+
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return const Column(
       children: [
         Text(
           'Forgot Password',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
-            color: const  Color(0xFF2D5948),
+            color: Color(0xFF2D5948),
           ),
         ),
         SizedBox(height: 8),
@@ -210,7 +214,7 @@ class ForgotPasswordText extends StatelessWidget {
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 14,
-            color: const  Color(0xFF2D5948),
+            color: Color(0xFF2D5948),
           ),
         ),
       ],
@@ -219,6 +223,8 @@ class ForgotPasswordText extends StatelessWidget {
 }
 
 class EmailInputField extends StatelessWidget {
+  const EmailInputField({super.key});
+
   @override
   Widget build(BuildContext context) {
     return TextField(
@@ -228,19 +234,21 @@ class EmailInputField extends StatelessWidget {
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
         ),
-        contentPadding: EdgeInsets.symmetric(horizontal: 15, vertical: 20),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
       ),
     );
   }
 }
 
 class ResetPasswordButton extends StatelessWidget {
+  const ResetPasswordButton({super.key});
+
   @override
   Widget build(BuildContext context) {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
         backgroundColor: const Color(0xFF007F8C), // Button color
-        minimumSize: Size(double.infinity, 50), // Full-width button
+        minimumSize: const Size(double.infinity, 50), // Full-width button
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
         ),
@@ -248,7 +256,7 @@ class ResetPasswordButton extends StatelessWidget {
       onPressed: () {
         // Handle password reset
       },
-      child: Text(
+      child: const Text(
         'Reset Password',
         style: TextStyle(
           color: Colors.white,
@@ -260,16 +268,18 @@ class ResetPasswordButton extends StatelessWidget {
 }
 
 class SignInLink extends StatelessWidget {
+  const SignInLink({super.key});
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        Navigator.push(context, MaterialPageRoute(builder: (context)=>SignInPage()));
+        Navigator.push(context, MaterialPageRoute(builder: (context)=>const SignInPage()));
       },
-      child: Text(
+      child: const Text(
         'Sign In',
         style: TextStyle(
-          color: const Color(0xFF007F8C),
+          color: Color(0xFF007F8C),
           fontSize: 16,
           fontWeight: FontWeight.bold,
         ),

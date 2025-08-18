@@ -1,9 +1,9 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:staymitra/Camping/camping.dart';
+import 'package:staymitra/Campaigns/campaigns_page.dart';
 import 'package:staymitra/Home/home.dart';
 import 'package:staymitra/Profile/profile.dart';
-import 'package:staymitra/SearchUsers/search.dart';
+import 'package:staymitra/SearchUsers/user_search_page.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -15,10 +15,10 @@ class _MainPageState extends State<MainPage> {
   int _currentIndex = 0;
 
   final List<Widget> _pages = [
-   StaymithraHomePage(),
-    const UploadPage(),
-     ChatSearchPage(),
-    ProfilePage(),
+    StaymithraHomePage(),
+    const CampaignsPage(),
+    const UserSearchPage(),
+    const ProfilePage(),
   ];
 
   Future<bool> _onWillPop() async {
@@ -48,9 +48,12 @@ class _MainPageState extends State<MainPage> {
                       type: FileType.media,
                     );
                     if (result != null) {
-                      final selectedPaths = result.paths.whereType<String>().toList();
+                      final selectedPaths =
+                          result.paths.whereType<String>().toList();
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Selected ${selectedPaths.length} files")),
+                        SnackBar(
+                            content:
+                                Text("Selected ${selectedPaths.length} files")),
                       );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -65,7 +68,8 @@ class _MainPageState extends State<MainPage> {
                 },
                 backgroundColor: const Color.fromARGB(255, 21, 7, 92),
                 shape: const CircleBorder(),
-                child: Icon(Icons.add, size: screenWidth * 0.07, color: Colors.white),
+                child: Icon(Icons.add,
+                    size: screenWidth * 0.07, color: Colors.white),
               )
             : null,
 
@@ -78,9 +82,11 @@ class _MainPageState extends State<MainPage> {
           onTap: (index) => setState(() => _currentIndex = index),
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-            BottomNavigationBarItem(icon: Icon(Icons.explore), label: "Explore"),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.explore), label: "Explore"),
             BottomNavigationBarItem(icon: Icon(Icons.search), label: "Search"),
-            BottomNavigationBarItem(icon: Icon(Icons.account_circle_outlined), label: "Account"),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.account_circle_outlined), label: "Account"),
           ],
         ),
       ),

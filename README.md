@@ -1,16 +1,56 @@
-# staymitra
+# StayMithra - Social Media & Event Platform
 
-A new Flutter project.
+A comprehensive Flutter social media application with event management, real-time messaging, and user interaction features, powered by Supabase.
 
-## Getting Started
+## 🚀 Features
 
-This project is a starting point for a Flutter application.
+### ✅ Completed Features
 
-A few resources to get you started if this is your first Flutter project:
+#### 🔐 Authentication System
+- User registration with email/password
+- Secure login/logout functionality
+- Automatic user profile creation
+- Session management with Supabase Auth
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+#### 👥 User Management
+- User profile creation and editing
+- Search users by username, email, or name
+- Recent users display
+- User avatar support
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+#### 📱 Social Media Features
+- Create and share posts with text and images
+- Like/unlike posts with real-time updates
+- Comment on posts
+- Public feed showing all user posts
+- Real-time post updates
+
+#### 💬 Real-time Chat System
+- Private messaging between users
+- Real-time message delivery
+- Chat history and message status
+- User search and chat initiation
+- Message read receipts
+
+#### 🎯 Campaign & Event Management
+- Create campaigns/events with details
+- Event categories and location support
+- Participant management
+- Event discovery and browsing
+- Real-time campaign updates
+
+#### 🔒 Security & Privacy
+- Row Level Security (RLS) policies
+- Private chat isolation
+- User data protection
+- Secure API access
+- Real-time security enforcement
+
+## 🛠️ Technology Stack
+
+- **Frontend**: Flutter (Dart)
+- **Backend**: Supabase
+- **Database**: PostgreSQL (via Supabase)
+- **Authentication**: Supabase Auth
+- **Real-time**: Supabase Realtime
+- **Storage**: Supabase Storage (ready for images)

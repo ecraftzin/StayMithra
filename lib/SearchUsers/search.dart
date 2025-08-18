@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:staymitra/ChatPage/chat.dart'; // ChatScreen below
+import 'package:staymitra/ChatPage/real_chat_screen.dart';
 
 class ChatSearchPage extends StatefulWidget {
   const ChatSearchPage({super.key});
@@ -12,14 +12,14 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
   final TextEditingController _searchCtr = TextEditingController();
 
   final List<Map<String, String>> chatList = const [
-    {'name': 'Sajib Rahman',     'message': 'Hi, John! How are you doing?'},
-    {'name': 'Adom Shafi',       'message': 'Ping me when free.'},
-    {'name': 'HR Rumen',         'message': 'Please check the doc.'},
-    {'name': 'Muhammed Farhan',  'message': 'Travel plan update.'},
-    {'name': 'Farhan Mustafa',   'message': 'Let’s meet tomorrow.'},
-    {'name': 'Farhan KP',        'message': 'Files shared.'},
-    {'name': 'Anjelina',         'message': 'Good morning!'},
-    {'name': 'Alexa Shorna',     'message': 'Lunch?'},
+    {'name': 'Sajib Rahman', 'message': 'Hi, John! How are you doing?'},
+    {'name': 'Adom Shafi', 'message': 'Ping me when free.'},
+    {'name': 'HR Rumen', 'message': 'Please check the doc.'},
+    {'name': 'Muhammed Farhan', 'message': 'Travel plan update.'},
+    {'name': 'Farhan Mustafa', 'message': 'Let’s meet tomorrow.'},
+    {'name': 'Farhan KP', 'message': 'Files shared.'},
+    {'name': 'Anjelina', 'message': 'Good morning!'},
+    {'name': 'Alexa Shorna', 'message': 'Lunch?'},
   ];
 
   String get _q => _searchCtr.text.trim().toLowerCase();
@@ -88,7 +88,8 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
                                 _searchCtr.clear();
                                 setState(() {});
                               },
-                              child: const Icon(Icons.close, size: 18, color: Colors.grey),
+                              child: const Icon(Icons.close,
+                                  size: 18, color: Colors.grey),
                             ),
                         ],
                       ),
@@ -124,7 +125,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => ChatScreen(
+                                  builder: (_) => RealChatScreen(
                                     peerId: id,
                                     peerName: name,
                                     // peerAvatar: 'assets/avatars/$id.png', // if you have one
@@ -209,7 +210,8 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
         backgroundColor: _colorFrom(name),
         child: Text(
           _initials(name),
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style:
+              const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       );
 

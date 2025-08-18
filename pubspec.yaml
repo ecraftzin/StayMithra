@@ -40,6 +40,12 @@ dependencies:
   google_fonts: ^6.2.1
   font_awesome_icon_class: ^0.0.6
   file_picker: ^10.2.1
+  supabase_flutter: ^2.8.0
+  shared_preferences: ^2.2.2
+  image_picker: ^1.0.4
+  cached_network_image: ^3.3.0
+  timeago: ^3.6.1
+  uuid: ^4.2.1
 
 dev_dependencies:
   flutter_test:

@@ -1,8 +1,88 @@
 import 'package:flutter/material.dart';
 import 'package:staymitra/UserLogin/login.dart';
+import 'package:staymitra/services/auth_service.dart';
 
-class SignupPage extends StatelessWidget {
+class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
+
+  @override
+  State<SignupPage> createState() => _SignupPageState();
+}
+
+class _SignupPageState extends State<SignupPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  final _usernameController = TextEditingController();
+  final _fullNameController = TextEditingController();
+  final _authService = AuthService();
+  bool _isLoading = false;
+  final bool _obscurePassword = true;
+  final bool _obscureConfirmPassword = true;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _usernameController.dispose();
+    _fullNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signUp() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    // Check if username is available
+    final isUsernameAvailable =
+        await _authService.isUsernameAvailable(_usernameController.text.trim());
+    if (!isUsernameAvailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Username is already taken'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final response = await _authService.signUp(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        username: _usernameController.text.trim(),
+        fullName: _fullNameController.text.trim(),
+      );
+
+      if (response.user != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Account created successfully! Please check your email to verify your account.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const SignInPage()),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sign up failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +183,8 @@ class SignupPage extends StatelessWidget {
                               SizedBox(height: height * 0.02),
                               _buildInputField("Place", width),
                               SizedBox(height: height * 0.02),
-                              _buildInputField("Password", width, isPassword: true),
+                              _buildInputField("Password", width,
+                                  isPassword: true),
 
                               SizedBox(height: height * 0.02),
 
@@ -115,14 +196,16 @@ class SignupPage extends StatelessWidget {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF007F8C),
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(width * 0.07),
+                                      borderRadius:
+                                          BorderRadius.circular(width * 0.07),
                                     ),
                                   ),
                                   onPressed: () {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (context) => const SignInPage(),
+                                        builder: (context) =>
+                                            const SignInPage(),
                                       ),
                                     );
                                   },
@@ -156,15 +239,18 @@ class SignupPage extends StatelessWidget {
                                     'facebook.png',
                                   ])
                                     Padding(
-                                      padding: EdgeInsets.symmetric(horizontal: width * 0.02),
+                                      padding: EdgeInsets.symmetric(
+                                          horizontal: width * 0.02),
                                       child: Container(
                                         padding: EdgeInsets.all(width * 0.025),
                                         decoration: BoxDecoration(
                                           color: Colors.white,
-                                          borderRadius: BorderRadius.circular(width * 0.03),
+                                          borderRadius: BorderRadius.circular(
+                                              width * 0.03),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: Colors.grey.withOpacity(0.3),
+                                              color:
+                                                  Colors.grey.withOpacity(0.3),
                                               blurRadius: 6,
                                               offset: const Offset(0, 4),
                                             ),
@@ -187,7 +273,8 @@ class SignupPage extends StatelessWidget {
 
                         // Bottom "Sign In" button
                         Padding(
-                          padding: EdgeInsets.symmetric(horizontal: width * 0.06),
+                          padding:
+                              EdgeInsets.symmetric(horizontal: width * 0.06),
                           child: SizedBox(
                             width: double.infinity,
                             height: height * 0.06,
@@ -196,7 +283,8 @@ class SignupPage extends StatelessWidget {
                                 backgroundColor: Colors.white,
                                 foregroundColor: const Color(0xFF007F8C),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(width * 0.07),
+                                  borderRadius:
+                                      BorderRadius.circular(width * 0.07),
                                 ),
                               ),
                               onPressed: () {
@@ -227,7 +315,8 @@ class SignupPage extends StatelessWidget {
   }
 
   // Keep helpers INSIDE the class
-  Widget _buildInputField(String hint, double width, {bool isPassword = false}) {
+  Widget _buildInputField(String hint, double width,
+      {bool isPassword = false}) {
     return TextFormField(
       obscureText: isPassword,
       style: TextStyle(fontSize: width * 0.04),

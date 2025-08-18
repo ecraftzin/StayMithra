@@ -1,0 +1,265 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../config/supabase_config.dart';
+import '../models/chat_model.dart';
+import '../models/user_model.dart';
+
+class ChatService {
+  static final ChatService _instance = ChatService._internal();
+  factory ChatService() => _instance;
+  ChatService._internal();
+
+  final SupabaseClient _supabase = supabase;
+
+  // Create or get existing chat between two users
+  Future<ChatModel?> createOrGetChat(String user1Id, String user2Id) async {
+    try {
+      // Ensure consistent ordering (smaller ID first)
+      final sortedUser1 = user1Id.compareTo(user2Id) < 0 ? user1Id : user2Id;
+      final sortedUser2 = user1Id.compareTo(user2Id) < 0 ? user2Id : user1Id;
+
+      // Try to find existing chat
+      var response = await _supabase
+          .from('chats')
+          .select('''
+            *,
+            users!chats_user1_id_fkey(*),
+            users!chats_user2_id_fkey(*)
+          ''')
+          .eq('user1_id', sortedUser1)
+          .eq('user2_id', sortedUser2)
+          .maybeSingle();
+
+      if (response != null) {
+        return _parseChatWithUsers(response, user1Id);
+      }
+
+      // Create new chat if doesn't exist
+      response = await _supabase.from('chats').insert({
+        'user1_id': sortedUser1,
+        'user2_id': sortedUser2,
+      }).select('''
+            *,
+            users!chats_user1_id_fkey(*),
+            users!chats_user2_id_fkey(*)
+          ''').single();
+
+      return _parseChatWithUsers(response, user1Id);
+    } catch (e) {
+      print('Error creating/getting chat: $e');
+      return null;
+    }
+  }
+
+  // Get all chats for a user
+  Future<List<ChatModel>> getUserChats(String userId) async {
+    try {
+      final response = await _supabase
+          .from('chats')
+          .select('''
+            *,
+            users!chats_user1_id_fkey(*),
+            users!chats_user2_id_fkey(*),
+            messages!inner(*)
+          ''')
+          .or('user1_id.eq.$userId,user2_id.eq.$userId')
+          .order('last_message_at', ascending: false);
+
+      return (response as List)
+          .map((chat) => _parseChatWithUsers(chat, userId))
+          .where((chat) => chat != null)
+          .cast<ChatModel>()
+          .toList();
+    } catch (e) {
+      print('Error getting user chats: $e');
+      return [];
+    }
+  }
+
+  // Send a message
+  Future<MessageModel?> sendMessage({
+    required String chatId,
+    required String senderId,
+    required String content,
+    String messageType = 'text',
+  }) async {
+    try {
+      // Insert message
+      final messageResponse = await _supabase.from('messages').insert({
+        'chat_id': chatId,
+        'sender_id': senderId,
+        'content': content,
+        'message_type': messageType,
+      }).select('''
+            *,
+            sender:users(*)
+          ''').single();
+
+      // Update chat's last_message_at
+      await _supabase
+          .from('chats')
+          .update({'last_message_at': DateTime.now().toIso8601String()}).eq(
+              'id', chatId);
+
+      return MessageModel.fromJson(messageResponse);
+    } catch (e) {
+      print('Error sending message: $e');
+      return null;
+    }
+  }
+
+  // Get messages for a chat
+  Future<List<MessageModel>> getChatMessages(String chatId,
+      {int limit = 50, int offset = 0}) async {
+    try {
+      final response = await _supabase
+          .from('messages')
+          .select('''
+            *,
+            sender:users(*)
+          ''')
+          .eq('chat_id', chatId)
+          .order('created_at', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      return (response as List)
+          .map((message) => MessageModel.fromJson(message))
+          .toList()
+          .reversed
+          .toList(); // Reverse to show oldest first
+    } catch (e) {
+      print('Error getting chat messages: $e');
+      return [];
+    }
+  }
+
+  // Mark messages as read
+  Future<void> markMessagesAsRead(String chatId, String userId) async {
+    try {
+      await _supabase
+          .from('messages')
+          .update({'is_read': true})
+          .eq('chat_id', chatId)
+          .neq('sender_id', userId)
+          .eq('is_read', false);
+    } catch (e) {
+      print('Error marking messages as read: $e');
+    }
+  }
+
+  // Get unread message count for a user
+  Future<int> getUnreadMessageCount(String userId) async {
+    try {
+      final chatIds = await _getUserChatIds(userId);
+      if (chatIds.isEmpty) return 0;
+
+      final response = await _supabase
+          .from('messages')
+          .select('id')
+          .neq('sender_id', userId)
+          .eq('is_read', false)
+          .inFilter('chat_id', chatIds);
+
+      return (response as List).length;
+    } catch (e) {
+      print('Error getting unread message count: $e');
+      return 0;
+    }
+  }
+
+  // Subscribe to new messages in a chat
+  RealtimeChannel subscribeToChat(
+      String chatId, Function(MessageModel) onNewMessage) {
+    return _supabase
+        .channel('chat_$chatId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'chat_id',
+            value: chatId,
+          ),
+          callback: (payload) async {
+            try {
+              // Fetch the complete message with sender info
+              final messageResponse =
+                  await _supabase.from('messages').select('''
+                    *,
+                    sender:users(*)
+                  ''').eq('id', payload.newRecord['id']).single();
+
+              final message = MessageModel.fromJson(messageResponse);
+              onNewMessage(message);
+            } catch (e) {
+              print('Error processing new message: $e');
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  // Helper method to parse chat with user information
+  ChatModel? _parseChatWithUsers(
+      Map<String, dynamic> chatData, String currentUserId) {
+    try {
+      final user1Data = chatData['users'] != null
+          ? (chatData['users'] is List
+              ? (chatData['users'] as List).first
+              : chatData['users'])
+          : null;
+
+      final user2Data = chatData['users'] != null
+          ? (chatData['users'] is List
+              ? (chatData['users'] as List).last
+              : chatData['users'])
+          : null;
+
+      // Determine which user is the "other" user
+      UserModel? otherUser;
+      if (user1Data != null && user1Data['id'] != currentUserId) {
+        otherUser = UserModel.fromJson(user1Data);
+      } else if (user2Data != null && user2Data['id'] != currentUserId) {
+        otherUser = UserModel.fromJson(user2Data);
+      }
+
+      // Get last message if available
+      MessageModel? lastMessage;
+      if (chatData['messages'] != null &&
+          (chatData['messages'] as List).isNotEmpty) {
+        final messages = chatData['messages'] as List;
+        messages.sort((a, b) => DateTime.parse(b['created_at'])
+            .compareTo(DateTime.parse(a['created_at'])));
+        lastMessage = MessageModel.fromJson(messages.first);
+      }
+
+      return ChatModel(
+        id: chatData['id'],
+        user1Id: chatData['user1_id'],
+        user2Id: chatData['user2_id'],
+        lastMessageAt: DateTime.parse(chatData['last_message_at']),
+        createdAt: DateTime.parse(chatData['created_at']),
+        otherUser: otherUser,
+        lastMessage: lastMessage,
+      );
+    } catch (e) {
+      print('Error parsing chat with users: $e');
+      return null;
+    }
+  }
+
+  // Helper method to get chat IDs for a user
+  Future<List<String>> _getUserChatIds(String userId) async {
+    try {
+      final response = await _supabase
+          .from('chats')
+          .select('id')
+          .or('user1_id.eq.$userId,user2_id.eq.$userId');
+
+      return (response as List).map((chat) => chat['id'] as String).toList();
+    } catch (e) {
+      print('Error getting user chat IDs: $e');
+      return [];
+    }
+  }
+}
