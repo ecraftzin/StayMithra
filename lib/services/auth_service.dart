@@ -33,7 +33,7 @@ class AuthService {
     }
   }
 
-  // Sign up with email and password
+  // Sign up with email and password (with email verification)
   Future<AuthResponse> signUp({
     required String email,
     required String password,
@@ -48,6 +48,8 @@ class AuthService {
           'username': username,
           'full_name': fullName ?? '',
         },
+        emailRedirectTo:
+            'https://staymitra.app/email-verified', // Deep link for email verification
       );
       return response;
     } catch (e) {
@@ -55,8 +57,8 @@ class AuthService {
     }
   }
 
-  // Sign in with email and password
-  Future<AuthResponse> signIn({
+  // Sign in with email and password (with email verification check)
+  Future<Map<String, dynamic>> signIn({
     required String email,
     required String password,
   }) async {
@@ -65,9 +67,63 @@ class AuthService {
         email: email,
         password: password,
       );
-      return response;
+
+      if (response.user != null) {
+        // Check if email is verified
+        if (response.user!.emailConfirmedAt == null) {
+          // Email not verified, sign out the user
+          await _supabase.auth.signOut();
+          return {
+            'success': false,
+            'message':
+                'Email not verified. Please check your email and verify your account before logging in.',
+            'needsVerification': true,
+          };
+        }
+
+        return {
+          'success': true,
+          'message': 'Login successful!',
+          'user': response.user,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Invalid email or password.',
+        };
+      }
     } catch (e) {
-      rethrow;
+      return {
+        'success': false,
+        'message': e.toString(),
+      };
+    }
+  }
+
+  // Check if current user's email is verified
+  bool get isEmailVerified {
+    final user = _supabase.auth.currentUser;
+    return user?.emailConfirmedAt != null;
+  }
+
+  // Resend email verification
+  Future<Map<String, dynamic>> resendEmailVerification(String email) async {
+    try {
+      await _supabase.auth.resend(
+        type: OtpType.signup,
+        email: email,
+        emailRedirectTo: 'https://staymitra.app/email-verified',
+      );
+
+      return {
+        'success': true,
+        'message': 'Verification email sent! Please check your inbox.',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Failed to send verification email: ${e.toString()}',
+      };
     }
   }
 
@@ -80,20 +136,8 @@ class AuthService {
     }
   }
 
-  // Resend email verification
-  Future<void> resendEmailVerification(String email) async {
-    try {
-      await _supabase.auth.resend(
-        type: OtpType.signup,
-        email: email,
-      );
-    } catch (e) {
-      rethrow;
-    }
-  }
-
   // Sign in with Google
-  Future<bool> signInWithGoogle() async {
+  Future<Map<String, dynamic>> signInWithGoogle() async {
     try {
       final response = await _supabase.auth.signInWithOAuth(
         OAuthProvider.google,
@@ -103,12 +147,29 @@ class AuthService {
 
       // Check if authentication was successful
       if (response == true) {
-        return true;
+        // Wait a moment for the auth state to update
+        await Future.delayed(const Duration(seconds: 2));
+
+        final user = _supabase.auth.currentUser;
+        if (user != null) {
+          return {
+            'success': true,
+            'message': 'Google sign-in successful!',
+            'user': user,
+          };
+        }
       }
-      return false;
+
+      return {
+        'success': false,
+        'message': 'Google sign-in was cancelled or failed.',
+      };
     } catch (e) {
       print('Google sign in error: $e');
-      return false;
+      return {
+        'success': false,
+        'message': 'Google sign-in failed: ${e.toString()}',
+      };
     }
   }
 

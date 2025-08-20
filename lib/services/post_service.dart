@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/post_model.dart';
+import '../models/comment_model.dart';
 
 class PostService {
   static final PostService _instance = PostService._internal();
@@ -14,13 +15,24 @@ class PostService {
     required String userId,
     required String content,
     List<String> imageUrls = const [],
+    List<String> videoUrls = const [],
     String? location,
   }) async {
     try {
+      // Determine media type
+      String mediaType = 'image';
+      if (videoUrls.isNotEmpty && imageUrls.isNotEmpty) {
+        mediaType = 'mixed';
+      } else if (videoUrls.isNotEmpty) {
+        mediaType = 'video';
+      }
+
       final response = await _supabase.from('posts').insert({
         'user_id': userId,
         'content': content,
         'image_urls': imageUrls,
+        'video_urls': videoUrls,
+        'media_type': mediaType,
         'location': location,
       }).select('''
             *,
@@ -144,39 +156,43 @@ class PostService {
   // Like a post
   Future<int> likePost(String postId, String userId) async {
     try {
+      // Insert like
       await _supabase.from('post_likes').insert({
         'post_id': postId,
         'user_id': userId,
       });
 
-      // Get updated like count
-      final response =
-          await _supabase.from('post_likes').select('id').eq('post_id', postId);
+      // Update likes count
+      final response = await _supabase.rpc('increment_post_likes', params: {
+        'post_id': postId,
+      });
 
-      return response.length;
+      return response as int? ?? 0;
     } catch (e) {
       print('Error liking post: $e');
-      rethrow;
+      return 0;
     }
   }
 
   // Unlike a post
   Future<int> unlikePost(String postId, String userId) async {
     try {
+      // Remove like
       await _supabase
           .from('post_likes')
           .delete()
           .eq('post_id', postId)
           .eq('user_id', userId);
 
-      // Get updated like count
-      final response =
-          await _supabase.from('post_likes').select('id').eq('post_id', postId);
+      // Update likes count
+      final response = await _supabase.rpc('decrement_post_likes', params: {
+        'post_id': postId,
+      });
 
-      return response.length;
+      return response as int? ?? 0;
     } catch (e) {
       print('Error unliking post: $e');
-      rethrow;
+      return 0;
     }
   }
 
@@ -192,43 +208,76 @@ class PostService {
 
       return response != null;
     } catch (e) {
-      print('Error checking if user liked post: $e');
+      print('Error checking like status: $e');
       return false;
     }
   }
 
-  // Add a comment to a post
-  Future<bool> addComment({
-    required String postId,
-    required String userId,
-    required String content,
-  }) async {
+  // Add comment to post
+  Future<CommentModel?> addComment(String postId, String content) async {
     try {
-      await _supabase.from('post_comments').insert({
+      final currentUser = _supabase.auth.currentUser;
+      if (currentUser == null) return null;
+
+      final response = await _supabase.from('post_comments').insert({
         'post_id': postId,
-        'user_id': userId,
+        'user_id': currentUser.id,
         'content': content,
+      }).select('''
+        *,
+        users(*)
+      ''').single();
+
+      // Update comments count
+      await _supabase.rpc('increment_post_comments', params: {
+        'post_id': postId,
       });
 
-      return true;
+      return CommentModel.fromJson(response);
     } catch (e) {
       print('Error adding comment: $e');
-      return false;
+      return null;
     }
   }
 
   // Get comments for a post
-  Future<List<Map<String, dynamic>>> getPostComments(String postId) async {
+  Future<List<CommentModel>> getPostComments(String postId) async {
     try {
       final response = await _supabase.from('post_comments').select('''
             *,
-            users(*)
-          ''').eq('post_id', postId).order('created_at', ascending: true);
+            user:users(*)
+          ''').eq('post_id', postId).order('created_at', ascending: false);
 
-      return List<Map<String, dynamic>>.from(response);
+      return (response as List)
+          .map((comment) => CommentModel.fromJson(comment))
+          .toList();
     } catch (e) {
-      print('Error getting post comments: $e');
+      print('Error getting comments: $e');
       return [];
+    }
+  }
+
+  // Share a post
+  Future<String?> sharePost(String postId, String userId) async {
+    try {
+      final shareUrl = 'https://staymitra.app/post/$postId';
+
+      await _supabase.from('shares').insert({
+        'user_id': userId,
+        'content_type': 'post',
+        'content_id': postId,
+        'shared_url': shareUrl,
+      });
+
+      // Update shares count
+      await _supabase.rpc('increment_post_shares', params: {
+        'post_id': postId,
+      });
+
+      return shareUrl;
+    } catch (e) {
+      print('Error sharing post: $e');
+      return null;
     }
   }
 

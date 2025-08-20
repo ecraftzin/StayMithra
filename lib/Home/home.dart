@@ -8,6 +8,10 @@ import 'package:staymitra/services/auth_service.dart';
 import 'package:staymitra/services/debug_service.dart';
 import 'package:staymitra/models/feed_item_model.dart';
 import 'package:staymitra/ChatPage/real_chat_screen.dart';
+import 'package:staymitra/widgets/video_player_widget.dart';
+import 'package:staymitra/Comments/comments_page.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class StaymithraHomePage extends StatefulWidget {
@@ -136,6 +140,7 @@ class _StaymithraHomePageState extends State<StaymithraHomePage> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: "home_fab",
         onPressed: _navigateToCreatePost,
         backgroundColor: const Color(0xFF007F8C),
         child: const Icon(
@@ -325,6 +330,119 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
     );
   }
 
+  Widget _buildMediaSection(double screenWidth) {
+    final allMediaUrls = <Map<String, dynamic>>[];
+
+    // Add images
+    for (final imageUrl in widget.feedItem.imageUrls) {
+      if (imageUrl.startsWith('https://rssnqbqbrejnjeiukrdr.supabase.co')) {
+        allMediaUrls.add({'type': 'image', 'url': imageUrl});
+      }
+    }
+
+    // Add videos
+    for (final videoUrl in widget.feedItem.videoUrls) {
+      allMediaUrls.add({'type': 'video', 'url': videoUrl});
+    }
+
+    if (allMediaUrls.isEmpty) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: screenWidth * 0.8,
+      child: PageView.builder(
+        itemCount: allMediaUrls.length,
+        itemBuilder: (context, index) {
+          final media = allMediaUrls[index];
+          final isVideo = media['type'] == 'video';
+
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(screenWidth * 0.02),
+            child: isVideo
+                ? VideoPlayerWidget(
+                    videoUrl: media['url'],
+                    autoPlay: true,
+                    showControls: true,
+                    looping: true,
+                  )
+                : CachedNetworkImage(
+                    imageUrl: media['url'],
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(
+                      height: screenWidth * 0.8,
+                      color: Colors.grey[200],
+                      child: const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      height: screenWidth * 0.8,
+                      color: Colors.grey[300],
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.broken_image, size: 50),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Failed to load image',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _handleComment(FeedItem item) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CommentsPage(
+          contentId: item.id,
+          contentType: item.type == FeedItemType.post ? 'post' : 'campaign',
+          contentTitle: item.title ?? item.content,
+        ),
+      ),
+    );
+  }
+
+  void _handleShare(FeedItem feedItem) async {
+    try {
+      String shareText;
+      String shareUrl;
+
+      if (feedItem.type == FeedItemType.post) {
+        shareText = 'Check out this post: ${feedItem.content}';
+        shareUrl = 'https://staymitra.app/post/${feedItem.id}';
+      } else {
+        shareText =
+            'Join this campaign: ${feedItem.title} - ${feedItem.content}';
+        shareUrl = 'https://staymitra.app/campaign/${feedItem.id}';
+      }
+
+      await Share.share('$shareText\n\n$shareUrl');
+
+      // Track the share in the backend
+      if (feedItem.type == FeedItemType.post) {
+        await _postService.sharePost(
+            feedItem.id, _authService.currentUser?.id ?? '');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sharing: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final feedItem = widget.feedItem;
@@ -440,70 +558,9 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
               ],
             ),
           ),
-          // Images (only show if they are valid Supabase URLs)
-          if (feedItem.imageUrls.isNotEmpty &&
-              feedItem.imageUrls.any((url) =>
-                  url.startsWith('https://rssnqbqbrejnjeiukrdr.supabase.co')))
-            SizedBox(
-              height: screenWidth * 0.8,
-              child: PageView.builder(
-                itemCount: feedItem.imageUrls
-                    .where((url) => url
-                        .startsWith('https://rssnqbqbrejnjeiukrdr.supabase.co'))
-                    .length,
-                itemBuilder: (context, index) {
-                  final validUrls = feedItem.imageUrls
-                      .where((url) => url.startsWith(
-                          'https://rssnqbqbrejnjeiukrdr.supabase.co'))
-                      .toList();
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(screenWidth * 0.02),
-                    child: Image.network(
-                      validUrls[index],
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Container(
-                          height: screenWidth * 0.8,
-                          color: Colors.grey[200],
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                            ),
-                          ),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        print('Error loading image: ${validUrls[index]}');
-                        print('Error: $error');
-                        return Container(
-                          height: screenWidth * 0.8,
-                          color: Colors.grey[300],
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.broken_image, size: 50),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Failed to load image',
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  );
-                },
-              ),
-            ),
+          // Media (Images and Videos)
+          if (feedItem.imageUrls.isNotEmpty || feedItem.videoUrls.isNotEmpty)
+            _buildMediaSection(screenWidth),
 
           // Content
           Padding(
@@ -562,9 +619,7 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
                           SizedBox(width: screenWidth * 0.04),
                           // Comment button
                           IconButton(
-                            onPressed: () {
-                              // TODO: Navigate to comments
-                            },
+                            onPressed: () => _handleComment(feedItem),
                             icon: Icon(
                               Icons.comment_outlined,
                               color: Colors.grey[600],
@@ -615,9 +670,7 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
                     ),
                     // Share button
                     IconButton(
-                      onPressed: () {
-                        // TODO: Implement share functionality
-                      },
+                      onPressed: () => _handleShare(feedItem),
                       icon: Icon(
                         Icons.share_outlined,
                         color: Colors.grey[600],

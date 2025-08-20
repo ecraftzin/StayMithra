@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:staymitra/MainPage/mainpage.dart';
 import 'package:staymitra/SplashScreen/getstarted.dart';
 import 'package:staymitra/UserLogin/login.dart';
+import 'package:staymitra/UserSIgnUp/email_verified_page.dart';
 import 'package:staymitra/config/supabase_config.dart';
 import 'package:staymitra/auth/auth_wrapper.dart';
 import 'package:staymitra/services/storage_service.dart';
@@ -33,7 +34,9 @@ class MyApp extends StatelessWidget {
         '/': (context) => const AuthWrapper(),
         '/get-started': (context) => const GetStartedPage(),
         '/signin': (context) => const SignInPage(),
+        '/login': (context) => const SignInPage(),
         '/main': (context) => const MainPage(),
+        '/email-verified': (context) => const EmailVerifiedPage(),
       },
       debugShowCheckedModeBanner: false,
     );

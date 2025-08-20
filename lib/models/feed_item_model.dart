@@ -77,6 +77,24 @@ class FeedItem {
     }
   }
 
+  List<String> get videoUrls {
+    switch (type) {
+      case FeedItemType.post:
+        return post!.videoUrls;
+      case FeedItemType.campaign:
+        return campaign!.videoUrls;
+    }
+  }
+
+  String get mediaType {
+    switch (type) {
+      case FeedItemType.post:
+        return post!.mediaType;
+      case FeedItemType.campaign:
+        return campaign!.mediaType;
+    }
+  }
+
   String? get location {
     switch (type) {
       case FeedItemType.post:

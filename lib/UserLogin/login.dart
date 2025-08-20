@@ -36,34 +36,43 @@ class _SignInPageState extends State<SignInPage> {
         password: _passwordController.text,
       );
 
-      if (response.user != null && mounted) {
-        // Check if email is verified
-        if (response.user!.emailConfirmedAt != null) {
+      if (mounted) {
+        if (response['success'] == true) {
+          // Login successful and email verified
           Navigator.pushReplacementNamed(context, '/main');
         } else {
-          // Email not verified, show message and redirect to verification
+          // Login failed or email not verified
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
                 children: [
-                  Icon(Icons.warning, color: Colors.white),
+                  Icon(
+                    response['needsVerification'] == true
+                        ? Icons.warning
+                        : Icons.error,
+                    color: Colors.white,
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Please verify your email before signing in.',
+                      response['message'] ?? 'Login failed',
                       style: TextStyle(color: Colors.white),
                     ),
                   ),
                 ],
               ),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 3),
+              backgroundColor: response['needsVerification'] == true
+                  ? Colors.orange
+                  : Colors.red,
+              duration: Duration(seconds: 4),
               behavior: SnackBarBehavior.floating,
             ),
           );
 
-          // Sign out the unverified user
-          await _authService.signOut();
+          // If email needs verification, show resend option
+          if (response['needsVerification'] == true) {
+            _showResendVerificationDialog();
+          }
         }
       }
     } catch (e) {
@@ -81,26 +90,64 @@ class _SignInPageState extends State<SignInPage> {
   }
 
   Future<void> _signInWithGoogle() async {
+    setState(() => _isLoading = true);
+
     try {
-      final success = await _authService.signInWithGoogle();
-      if (success && mounted) {
-        Navigator.pushReplacementNamed(context, '/main');
+      final response = await _authService.signInWithGoogle();
+
+      if (mounted) {
+        if (response['success'] == true) {
+          Navigator.pushReplacementNamed(context, '/main');
+        } else {
+          String errorMessage = response['message'] ?? 'Google sign-in failed';
+          Color backgroundColor = Colors.red;
+
+          // Check for specific error types
+          if (errorMessage.contains('provider is not enabled') ||
+              errorMessage.contains('redirect_uri_mismatch') ||
+              errorMessage.contains('invalid request')) {
+            errorMessage =
+                'Google sign-in is not configured yet. Please use email signup for now.';
+            backgroundColor = Colors.orange;
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(
+                    backgroundColor == Colors.orange
+                        ? Icons.warning
+                        : Icons.error,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      errorMessage,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: backgroundColor,
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
-        String errorMessage = 'Google sign in failed';
-        if (e.toString().contains('provider is not enabled')) {
-          errorMessage =
-              'Google sign-in is not configured yet. Please use email signup for now.';
-        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 4),
+            content: Text('Google sign in failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -146,6 +193,58 @@ class _SignInPageState extends State<SignInPage> {
             content: Text(errorMessage),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showResendVerificationDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Email Verification Required'),
+        content: const Text(
+          'Your email address needs to be verified before you can log in. Would you like us to resend the verification email?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _resendVerificationEmail();
+            },
+            child: const Text('Resend Email'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _resendVerificationEmail() async {
+    try {
+      final response = await _authService.resendEmailVerification(
+        _emailController.text.trim(),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['message'] ?? 'Email sent'),
+            backgroundColor:
+                response['success'] == true ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send email: $e'),
+            backgroundColor: Colors.red,
           ),
         );
       }
@@ -377,7 +476,9 @@ class _SignInPageState extends State<SignInPage> {
                                     children: [
                                       // Google Sign In
                                       GestureDetector(
-                                        onTap: _signInWithGoogle,
+                                        onTap: _isLoading
+                                            ? null
+                                            : _signInWithGoogle,
                                         child: Padding(
                                           padding: EdgeInsets.symmetric(
                                               horizontal: width * 0.02),
@@ -408,7 +509,9 @@ class _SignInPageState extends State<SignInPage> {
                                       ),
                                       // Apple Sign In
                                       GestureDetector(
-                                        onTap: _signInWithApple,
+                                        onTap: _isLoading
+                                            ? null
+                                            : _signInWithApple,
                                         child: Padding(
                                           padding: EdgeInsets.symmetric(
                                               horizontal: width * 0.02),
@@ -439,7 +542,9 @@ class _SignInPageState extends State<SignInPage> {
                                       ),
                                       // Facebook Sign In
                                       GestureDetector(
-                                        onTap: _signInWithFacebook,
+                                        onTap: _isLoading
+                                            ? null
+                                            : _signInWithFacebook,
                                         child: Padding(
                                           padding: EdgeInsets.symmetric(
                                               horizontal: width * 0.02),

@@ -6,6 +6,8 @@ class CampaignModel {
   final String title;
   final String description;
   final List<String> imageUrls;
+  final List<String> videoUrls;
+  final String mediaType; // 'image', 'video', 'mixed'
   final String? location;
   final DateTime? startDate;
   final DateTime? endDate;
@@ -13,6 +15,9 @@ class CampaignModel {
   final int currentParticipants;
   final double? price;
   final String? category;
+  final int likesCount;
+  final int commentsCount;
+  final int sharesCount;
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -24,6 +29,8 @@ class CampaignModel {
     required this.title,
     required this.description,
     this.imageUrls = const [],
+    this.videoUrls = const [],
+    this.mediaType = 'image',
     this.location,
     this.startDate,
     this.endDate,
@@ -31,6 +38,9 @@ class CampaignModel {
     this.currentParticipants = 0,
     this.price,
     this.category,
+    this.likesCount = 0,
+    this.commentsCount = 0,
+    this.sharesCount = 0,
     this.isActive = true,
     required this.createdAt,
     required this.updatedAt,
@@ -43,20 +53,28 @@ class CampaignModel {
       userId: json['user_id'] as String,
       title: json['title'] as String,
       description: json['description'] as String,
-      imageUrls: json['image_urls'] != null 
+      imageUrls: json['image_urls'] != null
           ? List<String>.from(json['image_urls'] as List)
           : [],
+      videoUrls: json['video_urls'] != null
+          ? List<String>.from(json['video_urls'] as List)
+          : [],
+      mediaType: json['media_type'] as String? ?? 'image',
       location: json['location'] as String?,
-      startDate: json['start_date'] != null 
+      startDate: json['start_date'] != null
           ? DateTime.parse(json['start_date'] as String)
           : null,
-      endDate: json['end_date'] != null 
+      endDate: json['end_date'] != null
           ? DateTime.parse(json['end_date'] as String)
           : null,
       maxParticipants: json['max_participants'] as int?,
       currentParticipants: json['current_participants'] as int? ?? 0,
-      price: json['price'] != null ? double.parse(json['price'].toString()) : null,
+      price:
+          json['price'] != null ? double.parse(json['price'].toString()) : null,
       category: json['category'] as String?,
+      likesCount: json['likes_count'] as int? ?? 0,
+      commentsCount: json['comments_count'] as int? ?? 0,
+      sharesCount: json['shares_count'] as int? ?? 0,
       isActive: json['is_active'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),

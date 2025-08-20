@@ -41,12 +41,31 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
     setState(() => _isResending = true);
 
     try {
-      await _authService.resendEmailVerification(widget.email);
+      final response = await _authService.resendEmailVerification(widget.email);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Verification email sent! Please check your inbox.'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(
+                  response['success'] == true
+                      ? Icons.check_circle
+                      : Icons.error,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    response['message'] ?? 'Email sent',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor:
+                response['success'] == true ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }

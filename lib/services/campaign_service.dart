@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/campaign_model.dart';
+import '../models/comment_model.dart';
 
 class CampaignService {
   static final CampaignService _instance = CampaignService._internal();
@@ -15,6 +16,7 @@ class CampaignService {
     required String title,
     required String description,
     List<String> imageUrls = const [],
+    List<String> videoUrls = const [],
     String? location,
     DateTime? startDate,
     DateTime? endDate,
@@ -23,11 +25,21 @@ class CampaignService {
     String? category,
   }) async {
     try {
+      // Determine media type
+      String mediaType = 'image';
+      if (videoUrls.isNotEmpty && imageUrls.isNotEmpty) {
+        mediaType = 'mixed';
+      } else if (videoUrls.isNotEmpty) {
+        mediaType = 'video';
+      }
+
       final response = await _supabase.from('campaigns').insert({
         'user_id': userId,
         'title': title,
         'description': description,
         'image_urls': imageUrls,
+        'video_urls': videoUrls,
+        'media_type': mediaType,
         'location': location,
         'start_date': startDate?.toIso8601String(),
         'end_date': endDate?.toIso8601String(),
@@ -95,14 +107,10 @@ class CampaignService {
   // Get a single campaign by ID
   Future<CampaignModel?> getCampaignById(String campaignId) async {
     try {
-      final response = await _supabase
-          .from('campaigns')
-          .select('''
+      final response = await _supabase.from('campaigns').select('''
             *,
             users(*)
-          ''')
-          .eq('id', campaignId)
-          .single();
+          ''').eq('id', campaignId).single();
 
       return CampaignModel.fromJson(response);
     } catch (e) {
@@ -132,9 +140,11 @@ class CampaignService {
       if (description != null) updates['description'] = description;
       if (imageUrls != null) updates['image_urls'] = imageUrls;
       if (location != null) updates['location'] = location;
-      if (startDate != null) updates['start_date'] = startDate.toIso8601String();
+      if (startDate != null)
+        updates['start_date'] = startDate.toIso8601String();
       if (endDate != null) updates['end_date'] = endDate.toIso8601String();
-      if (maxParticipants != null) updates['max_participants'] = maxParticipants;
+      if (maxParticipants != null)
+        updates['max_participants'] = maxParticipants;
       if (price != null) updates['price'] = price;
       if (category != null) updates['category'] = category;
       if (isActive != null) updates['is_active'] = isActive;
@@ -144,12 +154,12 @@ class CampaignService {
           .from('campaigns')
           .update(updates)
           .eq('id', campaignId)
-          .eq('user_id', userId) // Ensure user can only update their own campaigns
+          .eq('user_id',
+              userId) // Ensure user can only update their own campaigns
           .select('''
             *,
             users(*)
-          ''')
-          .single();
+          ''').single();
 
       return CampaignModel.fromJson(response);
     } catch (e) {
@@ -161,11 +171,8 @@ class CampaignService {
   // Delete a campaign
   Future<bool> deleteCampaign(String campaignId, String userId) async {
     try {
-      await _supabase
-          .from('campaigns')
-          .delete()
-          .eq('id', campaignId)
-          .eq('user_id', userId); // Ensure user can only delete their own campaigns
+      await _supabase.from('campaigns').delete().eq('id', campaignId).eq(
+          'user_id', userId); // Ensure user can only delete their own campaigns
 
       return true;
     } catch (e) {
@@ -228,7 +235,9 @@ class CampaignService {
       final campaign = await getCampaignById(campaignId);
       if (campaign != null) {
         await _supabase.from('campaigns').update({
-          'current_participants': (campaign.currentParticipants - 1).clamp(0, double.infinity).toInt(),
+          'current_participants': (campaign.currentParticipants - 1)
+              .clamp(0, double.infinity)
+              .toInt(),
         }).eq('id', campaignId);
       }
 
@@ -257,7 +266,8 @@ class CampaignService {
   }
 
   // Get campaign participants
-  Future<List<Map<String, dynamic>>> getCampaignParticipants(String campaignId) async {
+  Future<List<Map<String, dynamic>>> getCampaignParticipants(
+      String campaignId) async {
     try {
       final response = await _supabase
           .from('campaign_participants')
@@ -325,7 +335,8 @@ class CampaignService {
   }
 
   // Subscribe to new campaigns
-  RealtimeChannel subscribeToNewCampaigns(Function(CampaignModel) onNewCampaign) {
+  RealtimeChannel subscribeToNewCampaigns(
+      Function(CampaignModel) onNewCampaign) {
     return _supabase
         .channel('new_campaigns')
         .onPostgresChanges(
@@ -335,14 +346,11 @@ class CampaignService {
           callback: (payload) async {
             try {
               // Fetch the complete campaign with user info
-              final campaignResponse = await _supabase
-                  .from('campaigns')
-                  .select('''
+              final campaignResponse =
+                  await _supabase.from('campaigns').select('''
                     *,
                     users(*)
-                  ''')
-                  .eq('id', payload.newRecord['id'])
-                  .single();
+                  ''').eq('id', payload.newRecord['id']).single();
 
               final campaign = CampaignModel.fromJson(campaignResponse);
               onNewCampaign(campaign);
@@ -352,5 +360,48 @@ class CampaignService {
           },
         )
         .subscribe();
+  }
+
+  // Get comments for a campaign
+  Future<List<CommentModel>> getCampaignComments(String campaignId) async {
+    try {
+      final response = await _supabase
+          .from('campaign_comments')
+          .select('''
+            *,
+            user:users(*)
+          ''')
+          .eq('campaign_id', campaignId)
+          .order('created_at', ascending: false);
+
+      return (response as List)
+          .map((comment) => CommentModel.fromJson(comment))
+          .toList();
+    } catch (e) {
+      print('Error getting campaign comments: $e');
+      return [];
+    }
+  }
+
+  // Add comment to campaign
+  Future<CommentModel?> addComment(String campaignId, String content) async {
+    try {
+      final currentUser = _supabase.auth.currentUser;
+      if (currentUser == null) return null;
+
+      final response = await _supabase.from('campaign_comments').insert({
+        'campaign_id': campaignId,
+        'user_id': currentUser.id,
+        'content': content,
+      }).select('''
+        *,
+        user:users(*)
+      ''').single();
+
+      return CommentModel.fromJson(response);
+    } catch (e) {
+      print('Error adding campaign comment: $e');
+      return null;
+    }
   }
 }

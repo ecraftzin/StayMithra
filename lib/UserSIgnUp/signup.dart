@@ -17,6 +17,7 @@ class _SignupPageState extends State<SignupPage> {
   final _confirmPasswordController = TextEditingController();
   final _usernameController = TextEditingController();
   final _fullNameController = TextEditingController();
+  final _locationController = TextEditingController();
   final _authService = AuthService();
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -29,6 +30,7 @@ class _SignupPageState extends State<SignupPage> {
     _confirmPasswordController.dispose();
     _usernameController.dispose();
     _fullNameController.dispose();
+    _locationController.dispose();
     super.dispose();
   }
 
@@ -36,22 +38,32 @@ class _SignupPageState extends State<SignupPage> {
     // Validate form fields manually since we don't have a Form widget
     if (_emailController.text.trim().isEmpty ||
         _passwordController.text.isEmpty ||
-        _confirmPasswordController.text.isEmpty ||
-        _usernameController.text.trim().isEmpty ||
-        _fullNameController.text.trim().isEmpty) {
+        _usernameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please fill in all fields'),
+          content: Text('Please fill in all required fields'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    if (_passwordController.text != _confirmPasswordController.text) {
+    // Basic email validation
+    if (!_emailController.text.trim().contains('@')) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Passwords do not match'),
+          content: Text('Please enter a valid email address'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Password length validation
+    if (_passwordController.text.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password must be at least 6 characters long'),
           backgroundColor: Colors.red,
         ),
       );
@@ -78,7 +90,8 @@ class _SignupPageState extends State<SignupPage> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
         username: _usernameController.text.trim(),
-        fullName: _fullNameController.text.trim(),
+        fullName: _locationController.text
+            .trim(), // Using location as fullName for now
       );
 
       if (response.user != null && mounted) {
@@ -224,13 +237,17 @@ class _SignupPageState extends State<SignupPage> {
                               ),
                               SizedBox(height: height * 0.03),
 
-                              _buildInputField("Username", width),
+                              _buildInputField(
+                                  "Username", width, _usernameController),
                               SizedBox(height: height * 0.02),
-                              _buildInputField("Email/Phone Number", width),
+                              _buildInputField("Email/Phone Number", width,
+                                  _emailController),
                               SizedBox(height: height * 0.02),
-                              _buildInputField("Place", width),
+                              _buildInputField(
+                                  "Place", width, _locationController),
                               SizedBox(height: height * 0.02),
-                              _buildInputField("Password", width,
+                              _buildInputField(
+                                  "Password", width, _passwordController,
                                   isPassword: true),
 
                               SizedBox(height: height * 0.02),
@@ -344,10 +361,9 @@ class _SignupPageState extends State<SignupPage> {
                             ),
                           ),
                         ),
-                            ],
-                          ),
-                        ),
                       ],
+                    ),
+                  ],
                 ),
               ),
             );
@@ -358,9 +374,11 @@ class _SignupPageState extends State<SignupPage> {
   }
 
   // Keep helpers INSIDE the class
-  Widget _buildInputField(String hint, double width,
+  Widget _buildInputField(
+      String hint, double width, TextEditingController controller,
       {bool isPassword = false}) {
     return TextFormField(
+      controller: controller,
       obscureText: isPassword,
       style: TextStyle(fontSize: width * 0.04),
       decoration: InputDecoration(

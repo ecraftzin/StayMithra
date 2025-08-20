@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:staymitra/services/user_service.dart';
 import 'package:staymitra/services/chat_service.dart';
+import 'package:staymitra/services/follow_request_service.dart';
 import 'package:staymitra/models/user_model.dart';
 import 'package:staymitra/models/chat_model.dart';
 import 'package:staymitra/services/auth_service.dart';
@@ -19,6 +20,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
   final UserService _userService = UserService();
   final ChatService _chatService = ChatService();
   final AuthService _authService = AuthService();
+  final FollowRequestService _followRequestService = FollowRequestService();
 
   List<UserModel> _searchResults = [];
   List<ChatModel> _recentChats = [];
@@ -117,12 +119,30 @@ class _UserSearchPageState extends State<UserSearchPage> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error starting chat: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.info, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    e.toString().contains('must follow each other')
+                        ? 'You need to follow each other to start a chat'
+                        : 'Error starting chat: $e',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: e.toString().contains('must follow each other')
+                ? Colors.orange
+                : Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
@@ -310,6 +330,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
         ],
       ),
       child: ListTile(
+        onTap: () => _startChat(user),
         contentPadding: EdgeInsets.zero,
         leading: CircleAvatar(
           radius: screenWidth * 0.06,
@@ -354,14 +375,6 @@ class _UserSearchPageState extends State<UserSearchPage> {
                 overflow: TextOverflow.ellipsis,
               ),
           ],
-        ),
-        trailing: IconButton(
-          onPressed: () => _startChat(user),
-          icon: Icon(
-            Icons.chat_bubble_outline,
-            color: const Color(0xFF007F8C),
-            size: screenWidth * 0.06,
-          ),
         ),
       ),
     );

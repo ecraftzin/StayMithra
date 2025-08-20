@@ -10,9 +10,42 @@ class ChatService {
 
   final SupabaseClient _supabase = supabase;
 
+  // Check if users follow each other (mutual follow)
+  Future<bool> _checkMutualFollow(String user1Id, String user2Id) async {
+    try {
+      // Check if user1 follows user2
+      final user1FollowsUser2 = await _supabase
+          .from('follows')
+          .select('id')
+          .eq('follower_id', user1Id)
+          .eq('following_id', user2Id)
+          .maybeSingle();
+
+      // Check if user2 follows user1
+      final user2FollowsUser1 = await _supabase
+          .from('follows')
+          .select('id')
+          .eq('follower_id', user2Id)
+          .eq('following_id', user1Id)
+          .maybeSingle();
+
+      // Both must follow each other for chat
+      return user1FollowsUser2 != null && user2FollowsUser1 != null;
+    } catch (e) {
+      print('Error checking mutual follow: $e');
+      return false;
+    }
+  }
+
   // Create or get existing chat between two users
   Future<ChatModel?> createOrGetChat(String user1Id, String user2Id) async {
     try {
+      // Check if users are following each other (mutual follow required for chat)
+      final isFollowing = await _checkMutualFollow(user1Id, user2Id);
+      if (!isFollowing) {
+        throw Exception('Users must follow each other to start a chat');
+      }
+
       // Ensure consistent ordering (smaller ID first)
       final sortedUser1 = user1Id.compareTo(user2Id) < 0 ? user1Id : user2Id;
       final sortedUser2 = user1Id.compareTo(user2Id) < 0 ? user2Id : user1Id;
