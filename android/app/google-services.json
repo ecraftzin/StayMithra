@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "491202320546",
+    "project_id": "empire-llc",
+    "storage_bucket": "empire-llc.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:491202320546:android:1234567890abcdef",
+        "android_client_info": {
+          "package_name": "com.example.staymitra"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "491202320546-1qq3cne0dq75upd49132fgg3rmp76lno.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDummy_Key_Replace_With_Actual"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "491202320546-1qq3cne0dq75upd49132fgg3rmp76lno.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

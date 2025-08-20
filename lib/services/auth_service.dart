@@ -95,11 +95,17 @@ class AuthService {
   // Sign in with Google
   Future<bool> signInWithGoogle() async {
     try {
-      await _supabase.auth.signInWithOAuth(
+      final response = await _supabase.auth.signInWithOAuth(
         OAuthProvider.google,
         redirectTo: 'https://rssnqbqbrejnjeiukrdr.supabase.co/auth/v1/callback',
+        authScreenLaunchMode: LaunchMode.externalApplication,
       );
-      return true;
+
+      // Check if authentication was successful
+      if (response == true) {
+        return true;
+      }
+      return false;
     } catch (e) {
       print('Google sign in error: $e');
       return false;
@@ -109,11 +115,16 @@ class AuthService {
   // Sign in with Apple
   Future<bool> signInWithApple() async {
     try {
-      await _supabase.auth.signInWithOAuth(
+      final response = await _supabase.auth.signInWithOAuth(
         OAuthProvider.apple,
         redirectTo: 'https://rssnqbqbrejnjeiukrdr.supabase.co/auth/v1/callback',
+        authScreenLaunchMode: LaunchMode.externalApplication,
       );
-      return true;
+
+      if (response == true) {
+        return true;
+      }
+      return false;
     } catch (e) {
       print('Apple sign in error: $e');
       return false;
@@ -123,11 +134,16 @@ class AuthService {
   // Sign in with Facebook
   Future<bool> signInWithFacebook() async {
     try {
-      await _supabase.auth.signInWithOAuth(
+      final response = await _supabase.auth.signInWithOAuth(
         OAuthProvider.facebook,
         redirectTo: 'https://rssnqbqbrejnjeiukrdr.supabase.co/auth/v1/callback',
+        authScreenLaunchMode: LaunchMode.externalApplication,
       );
-      return true;
+
+      if (response == true) {
+        return true;
+      }
+      return false;
     } catch (e) {
       print('Facebook sign in error: $e');
       return false;
