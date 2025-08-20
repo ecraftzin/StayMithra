@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 // import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:staymitra/Camping/camping.dart';
 import 'package:staymitra/SearchUsers/user_search_page.dart';
 import 'package:staymitra/Posts/create_post_page.dart';
 import 'package:staymitra/services/feed_service.dart';
@@ -9,9 +8,7 @@ import 'package:staymitra/services/auth_service.dart';
 import 'package:staymitra/services/debug_service.dart';
 import 'package:staymitra/models/feed_item_model.dart';
 import 'package:staymitra/ChatPage/real_chat_screen.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 class StaymithraHomePage extends StatefulWidget {
   const StaymithraHomePage({super.key});

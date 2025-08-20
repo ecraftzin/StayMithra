@@ -15,7 +15,7 @@ class _MainPageState extends State<MainPage> {
   int _currentIndex = 0;
 
   final List<Widget> _pages = [
-    StaymithraHomePage(),
+    const StaymithraHomePage(),
     const CampaignsPage(),
     const UserSearchPage(),
     const ProfilePage(),

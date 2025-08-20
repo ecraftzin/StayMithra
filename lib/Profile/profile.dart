@@ -4,6 +4,7 @@ import 'package:staymitra/services/auth_service.dart';
 import 'package:staymitra/services/user_service.dart';
 import 'package:staymitra/services/post_service.dart';
 import 'package:staymitra/services/campaign_service.dart';
+import 'package:staymitra/services/follow_service.dart';
 import 'package:staymitra/models/user_model.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -18,6 +19,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final UserService _userService = UserService();
   final PostService _postService = PostService();
   final CampaignService _campaignService = CampaignService();
+  final FollowService _followService = FollowService();
   UserModel? _currentUser;
   bool _isLoading = true;
   int _postCount = 0;
@@ -65,9 +67,9 @@ class _ProfilePageState extends State<ProfilePage> {
       // Combine posts and campaigns for display
       _userContent = [...posts, ...campaigns];
 
-      // TODO: Load actual followers/following counts from database
-      _followersCount = 0;
-      _followingCount = 0;
+      // Load actual followers/following counts from database
+      _followersCount = await _followService.getFollowersCount(userId);
+      _followingCount = await _followService.getFollowingCount(userId);
     } catch (e) {
       print('Error loading user stats: $e');
     }
@@ -219,7 +221,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => EditProfilePage(),
+                                  builder: (context) => const EditProfilePage(),
                                 ),
                               );
                             },

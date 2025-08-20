@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:staymitra/ForgotPassword/forgotpassword.dart';
-import 'package:staymitra/MainPage/mainpage.dart';
 import 'package:staymitra/UserSIgnUp/signup.dart';
 import 'package:staymitra/services/auth_service.dart';
 
@@ -38,7 +37,34 @@ class _SignInPageState extends State<SignInPage> {
       );
 
       if (response.user != null && mounted) {
-        Navigator.pushReplacementNamed(context, '/main');
+        // Check if email is verified
+        if (response.user!.emailConfirmedAt != null) {
+          Navigator.pushReplacementNamed(context, '/main');
+        } else {
+          // Email not verified, show message and redirect to verification
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.warning, color: Colors.white),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Please verify your email before signing in.',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+
+          // Sign out the unverified user
+          await _authService.signOut();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -51,6 +77,78 @@ class _SignInPageState extends State<SignInPage> {
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    try {
+      final success = await _authService.signInWithGoogle();
+      if (success && mounted) {
+        Navigator.pushReplacementNamed(context, '/main');
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Google sign in failed';
+        if (e.toString().contains('provider is not enabled')) {
+          errorMessage =
+              'Google sign-in is not configured yet. Please use email signup for now.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _signInWithApple() async {
+    try {
+      final success = await _authService.signInWithApple();
+      if (success && mounted) {
+        Navigator.pushReplacementNamed(context, '/main');
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Apple sign in failed';
+        if (e.toString().contains('provider is not enabled')) {
+          errorMessage =
+              'Apple sign-in is not configured yet. Please use email signup for now.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _signInWithFacebook() async {
+    try {
+      final success = await _authService.signInWithFacebook();
+      if (success && mounted) {
+        Navigator.pushReplacementNamed(context, '/main');
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Facebook sign in failed';
+        if (e.toString().contains('provider is not enabled')) {
+          errorMessage =
+              'Facebook sign-in is not configured yet. Please use email signup for now.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
@@ -277,12 +375,10 @@ class _SignInPageState extends State<SignInPage> {
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      for (var asset in [
-                                        'google.png',
-                                        'apple.png',
-                                        'facebook.png'
-                                      ])
-                                        Padding(
+                                      // Google Sign In
+                                      GestureDetector(
+                                        onTap: _signInWithGoogle,
+                                        child: Padding(
                                           padding: EdgeInsets.symmetric(
                                               horizontal: width * 0.02),
                                           child: Container(
@@ -303,12 +399,75 @@ class _SignInPageState extends State<SignInPage> {
                                               ],
                                             ),
                                             child: Image.asset(
-                                              'assets/Signinwith/$asset',
+                                              'assets/Signinwith/google.png',
                                               width: width * 0.08,
                                               height: width * 0.08,
                                             ),
                                           ),
                                         ),
+                                      ),
+                                      // Apple Sign In
+                                      GestureDetector(
+                                        onTap: _signInWithApple,
+                                        child: Padding(
+                                          padding: EdgeInsets.symmetric(
+                                              horizontal: width * 0.02),
+                                          child: Container(
+                                            padding:
+                                                EdgeInsets.all(width * 0.025),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                      width * 0.03),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.grey
+                                                      .withOpacity(0.3),
+                                                  blurRadius: 6,
+                                                  offset: const Offset(0, 4),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Image.asset(
+                                              'assets/Signinwith/apple.png',
+                                              width: width * 0.08,
+                                              height: width * 0.08,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // Facebook Sign In
+                                      GestureDetector(
+                                        onTap: _signInWithFacebook,
+                                        child: Padding(
+                                          padding: EdgeInsets.symmetric(
+                                              horizontal: width * 0.02),
+                                          child: Container(
+                                            padding:
+                                                EdgeInsets.all(width * 0.025),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                      width * 0.03),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.grey
+                                                      .withOpacity(0.3),
+                                                  blurRadius: 6,
+                                                  offset: const Offset(0, 4),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Image.asset(
+                                              'assets/Signinwith/facebook.png',
+                                              width: width * 0.08,
+                                              height: width * 0.08,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ],
                                   ),
 

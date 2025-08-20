@@ -140,7 +140,7 @@ class ForgotPasswordPage extends StatelessWidget {
             Positioned(
               top: size.height * 0.05,
               left: size.width * 0.05,
-              child: Logo(),
+              child: const Logo(),
             ),
             // Forgot Password Section (Centered)
            Center(
@@ -157,13 +157,13 @@ class ForgotPasswordPage extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ForgotPasswordText(),
+            const ForgotPasswordText(),
             SizedBox(height: size.height * 0.02),
-            EmailInputField(),
+            const EmailInputField(),
             SizedBox(height: size.height * 0.04),
-            ResetPasswordButton(),
+            const ResetPasswordButton(),
             SizedBox(height: size.height * 0.02),
-            SignInLink(),
+            const SignInLink(),
           ],
         ),
       ),

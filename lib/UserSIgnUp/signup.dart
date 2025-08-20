@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:staymitra/UserLogin/login.dart';
+import 'package:staymitra/UserSIgnUp/email_verification_page.dart';
 import 'package:staymitra/services/auth_service.dart';
 
 class SignupPage extends StatefulWidget {
@@ -18,8 +19,8 @@ class _SignupPageState extends State<SignupPage> {
   final _fullNameController = TextEditingController();
   final _authService = AuthService();
   bool _isLoading = false;
-  final bool _obscurePassword = true;
-  final bool _obscureConfirmPassword = true;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void dispose() {
@@ -32,7 +33,30 @@ class _SignupPageState extends State<SignupPage> {
   }
 
   Future<void> _signUp() async {
-    if (!_formKey.currentState!.validate()) return;
+    // Validate form fields manually since we don't have a Form widget
+    if (_emailController.text.trim().isEmpty ||
+        _passwordController.text.isEmpty ||
+        _confirmPasswordController.text.isEmpty ||
+        _usernameController.text.trim().isEmpty ||
+        _fullNameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please fill in all fields'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_passwordController.text != _confirmPasswordController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Passwords do not match'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     // Check if username is available
     final isUsernameAvailable =
@@ -58,17 +82,40 @@ class _SignupPageState extends State<SignupPage> {
       );
 
       if (response.user != null && mounted) {
+        // Show success toast
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Account created successfully! Please check your email to verify your account.'),
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Account created successfully! Please verify your email to continue.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
             backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
           ),
         );
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const SignInPage()),
-        );
+
+        // Wait a moment for user to see the toast, then navigate
+        await Future.delayed(Duration(seconds: 1));
+
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => EmailVerificationPage(
+                email: _emailController.text.trim(),
+              ),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -200,22 +247,17 @@ class _SignupPageState extends State<SignupPage> {
                                           BorderRadius.circular(width * 0.07),
                                     ),
                                   ),
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            const SignInPage(),
-                                      ),
-                                    );
-                                  },
-                                  child: Text(
-                                    "Sign Up",
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: width * 0.045,
-                                    ),
-                                  ),
+                                  onPressed: _isLoading ? null : _signUp,
+                                  child: _isLoading
+                                      ? const CircularProgressIndicator(
+                                          color: Colors.white)
+                                      : Text(
+                                          "Sign Up",
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: width * 0.045,
+                                          ),
+                                        ),
                                 ),
                               ),
 
@@ -302,9 +344,10 @@ class _SignupPageState extends State<SignupPage> {
                             ),
                           ),
                         ),
+                            ],
+                          ),
+                        ),
                       ],
-                    ),
-                  ],
                 ),
               ),
             );

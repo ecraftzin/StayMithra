@@ -11,21 +11,21 @@ class AuthService {
 
   // Get current user
   User? get currentUser => _supabase.auth.currentUser;
-  
+
   // Check if user is logged in
   bool get isLoggedIn => currentUser != null;
 
   // Get current user profile
   Future<UserModel?> getCurrentUserProfile() async {
     if (!isLoggedIn) return null;
-    
+
     try {
       final response = await _supabase
           .from('users')
           .select()
           .eq('id', currentUser!.id)
           .single();
-      
+
       return UserModel.fromJson(response);
     } catch (e) {
       print('Error getting user profile: $e');
@@ -80,6 +80,60 @@ class AuthService {
     }
   }
 
+  // Resend email verification
+  Future<void> resendEmailVerification(String email) async {
+    try {
+      await _supabase.auth.resend(
+        type: OtpType.signup,
+        email: email,
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Sign in with Google
+  Future<bool> signInWithGoogle() async {
+    try {
+      await _supabase.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'https://rssnqbqbrejnjeiukrdr.supabase.co/auth/v1/callback',
+      );
+      return true;
+    } catch (e) {
+      print('Google sign in error: $e');
+      return false;
+    }
+  }
+
+  // Sign in with Apple
+  Future<bool> signInWithApple() async {
+    try {
+      await _supabase.auth.signInWithOAuth(
+        OAuthProvider.apple,
+        redirectTo: 'https://rssnqbqbrejnjeiukrdr.supabase.co/auth/v1/callback',
+      );
+      return true;
+    } catch (e) {
+      print('Apple sign in error: $e');
+      return false;
+    }
+  }
+
+  // Sign in with Facebook
+  Future<bool> signInWithFacebook() async {
+    try {
+      await _supabase.auth.signInWithOAuth(
+        OAuthProvider.facebook,
+        redirectTo: 'https://rssnqbqbrejnjeiukrdr.supabase.co/auth/v1/callback',
+      );
+      return true;
+    } catch (e) {
+      print('Facebook sign in error: $e');
+      return false;
+    }
+  }
+
   // Reset password
   Future<void> resetPassword(String email) async {
     try {
@@ -108,7 +162,7 @@ class AuthService {
       if (location != null) updates['location'] = location;
       if (website != null) updates['website'] = website;
       if (avatarUrl != null) updates['avatar_url'] = avatarUrl;
-      
+
       updates['updated_at'] = DateTime.now().toIso8601String();
 
       final response = await _supabase
@@ -133,7 +187,7 @@ class AuthService {
           .select('id')
           .eq('username', username)
           .maybeSingle();
-      
+
       return response == null;
     } catch (e) {
       print('Error checking username: $e');

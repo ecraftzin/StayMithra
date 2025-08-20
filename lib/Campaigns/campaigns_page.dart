@@ -4,7 +4,6 @@ import 'package:staymitra/services/auth_service.dart';
 import 'package:staymitra/models/campaign_model.dart';
 import 'package:staymitra/Campaigns/create_campaign_page.dart';
 // import 'package:staymitra/Campaigns/campaign_detail_page.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:supabase_flutter/supabase_flutter.dart';
 

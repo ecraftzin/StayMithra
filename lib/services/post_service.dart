@@ -1,7 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/post_model.dart';
-import '../models/user_model.dart';
 
 class PostService {
   static final PostService _instance = PostService._internal();

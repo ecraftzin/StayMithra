@@ -57,9 +57,8 @@ class ChatService {
           .from('chats')
           .select('''
             *,
-            users!chats_user1_id_fkey(*),
-            users!chats_user2_id_fkey(*),
-            messages!inner(*)
+            user1:users!chats_user1_id_fkey(*),
+            user2:users!chats_user2_id_fkey(*)
           ''')
           .or('user1_id.eq.$userId,user2_id.eq.$userId')
           .order('last_message_at', ascending: false);
