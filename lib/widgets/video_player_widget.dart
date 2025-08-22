@@ -36,6 +36,18 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
 
   Future<void> _initializePlayer() async {
     try {
+      // Validate URL before creating controller
+      final uri = Uri.tryParse(widget.videoUrl);
+      if (widget.videoUrl.isEmpty ||
+          widget.videoUrl.contains('blob:') ||
+          uri == null ||
+          !uri.hasAbsolutePath) {
+        setState(() {
+          _hasError = true;
+        });
+        return;
+      }
+
       _videoPlayerController = VideoPlayerController.networkUrl(
         Uri.parse(widget.videoUrl),
       );
@@ -47,7 +59,8 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
         autoPlay: widget.autoPlay,
         looping: widget.looping,
         showControls: widget.showControls,
-        aspectRatio: widget.aspectRatio ?? _videoPlayerController!.value.aspectRatio,
+        aspectRatio:
+            widget.aspectRatio ?? _videoPlayerController!.value.aspectRatio,
         autoInitialize: true,
         errorBuilder: (context, errorMessage) {
           return Container(
@@ -62,7 +75,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                     size: 48,
                   ),
                   const SizedBox(height: 16),
-                  Text(
+                  const Text(
                     'Error loading video',
                     style: TextStyle(
                       color: Colors.white,
@@ -72,7 +85,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                   const SizedBox(height: 8),
                   Text(
                     errorMessage,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 12,
                     ),
@@ -110,32 +123,37 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   @override
   Widget build(BuildContext context) {
     if (_hasError) {
-      return Container(
-        height: 200,
-        color: Colors.grey[300],
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.error, size: 48, color: Colors.grey),
-              SizedBox(height: 8),
-              Text(
-                'Failed to load video',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ],
+      return AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Container(
+          color: Colors.grey[300],
+          child: const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error, size: 48, color: Colors.grey),
+                SizedBox(height: 8),
+                Text(
+                  'Failed to load video',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
 
     if (!_isInitialized || _chewieController == null) {
-      return Container(
-        height: 200,
-        color: Colors.black,
-        child: const Center(
-          child: CircularProgressIndicator(
-            color: Colors.white,
+      return AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Container(
+          color: Colors.black,
+          child: const Center(
+            child: CircularProgressIndicator(
+              color: Colors.white,
+            ),
           ),
         ),
       );

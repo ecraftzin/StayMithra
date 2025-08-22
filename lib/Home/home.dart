@@ -6,6 +6,10 @@ import 'package:staymitra/services/feed_service.dart';
 import 'package:staymitra/services/post_service.dart';
 import 'package:staymitra/services/auth_service.dart';
 import 'package:staymitra/services/debug_service.dart';
+import 'package:staymitra/services/chat_service.dart';
+import 'package:staymitra/services/campaign_service.dart';
+import 'package:staymitra/models/user_model.dart';
+import 'package:staymitra/Profile/user_profile_page.dart';
 import 'package:staymitra/models/feed_item_model.dart';
 import 'package:staymitra/ChatPage/real_chat_screen.dart';
 import 'package:staymitra/widgets/video_player_widget.dart';
@@ -24,18 +28,21 @@ class StaymithraHomePage extends StatefulWidget {
 class _StaymithraHomePageState extends State<StaymithraHomePage> {
   final FeedService _feedService = FeedService();
   final AuthService _authService = AuthService();
+  final ChatService _chatService = ChatService();
   List<FeedItem> _feedItems = [];
   bool _isLoading = true;
   bool _isLoadingMore = false;
   int _currentPage = 0;
   final int _itemsPerPage = 10;
   bool _hasCreatedSampleData = false;
+  int _unreadChatCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadFeed();
     _createSampleDataIfNeeded();
+    _loadUnreadChatCount();
   }
 
   @override
@@ -52,14 +59,16 @@ class _StaymithraHomePageState extends State<StaymithraHomePage> {
 
       // Only create sample campaigns (not posts without images)
       await _feedService.createSampleCampaigns(currentUser.id);
-      setState(() => _hasCreatedSampleData = true);
+      if (mounted) {
+        setState(() => _hasCreatedSampleData = true);
+      }
       // Refresh feed after creating sample data
       _loadFeed(refresh: true);
     }
   }
 
   Future<void> _loadFeed({bool refresh = false}) async {
-    if (refresh) {
+    if (refresh && mounted) {
       setState(() {
         _isLoading = true;
         _currentPage = 0;
@@ -73,30 +82,50 @@ class _StaymithraHomePageState extends State<StaymithraHomePage> {
         offset: _currentPage * _itemsPerPage,
       );
 
-      setState(() {
-        if (refresh) {
-          _feedItems = feedItems;
-        } else {
-          _feedItems.addAll(feedItems);
-        }
-        _currentPage++;
-        _isLoading = false;
-        _isLoadingMore = false;
-      });
+      if (mounted) {
+        setState(() {
+          if (refresh) {
+            _feedItems = feedItems;
+          } else {
+            _feedItems.addAll(feedItems);
+          }
+          _currentPage++;
+          _isLoading = false;
+          _isLoadingMore = false;
+        });
+      }
     } catch (e) {
       print('Error loading feed: $e');
-      setState(() {
-        _isLoading = false;
-        _isLoadingMore = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isLoadingMore = false;
+        });
+      }
     }
   }
 
   Future<void> _loadMoreFeed() async {
     if (_isLoadingMore) return;
 
-    setState(() => _isLoadingMore = true);
+    if (mounted) {
+      setState(() => _isLoadingMore = true);
+    }
     await _loadFeed();
+  }
+
+  Future<void> _loadUnreadChatCount() async {
+    try {
+      final currentUser = _authService.currentUser;
+      if (currentUser != null) {
+        final count = await _chatService.getUnreadMessageCount(currentUser.id);
+        if (mounted) {
+          setState(() => _unreadChatCount = count);
+        }
+      }
+    } catch (e) {
+      // Handle error silently
+    }
   }
 
   Future<void> _navigateToCreatePost() async {
@@ -127,15 +156,54 @@ class _StaymithraHomePageState extends State<StaymithraHomePage> {
           ),
         ),
         actions: [
-          IconButton(
-              onPressed: () {
-                Navigator.push(
+          Stack(
+            children: [
+              IconButton(
+                onPressed: () async {
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (context) => const UserSearchPage()));
-              },
-              icon: Icon(Icons.message_outlined,
-                  color: Colors.black, size: screenWidth * 0.06)),
+                      builder: (context) => const UserSearchPage(),
+                    ),
+                  );
+                  // Refresh chat count when returning from search/chat page
+                  if (mounted) {
+                    await _loadUnreadChatCount();
+                  }
+                },
+                icon: Icon(
+                  Icons.message_outlined,
+                  color: Colors.black,
+                  size: screenWidth * 0.06,
+                ),
+              ),
+              if (_unreadChatCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      _unreadChatCount > 99 ? '99+' : '$_unreadChatCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           SizedBox(width: screenWidth * 0.025),
         ],
       ),
@@ -229,18 +297,28 @@ class FeedItemWidget extends StatefulWidget {
 class _FeedItemWidgetState extends State<FeedItemWidget> {
   final AuthService _authService = AuthService();
   final PostService _postService = PostService();
+  final CampaignService _campaignService = CampaignService();
   bool _isLiked = false;
   bool _isLiking = false;
   int _currentLikeCount = 0;
+  bool _isJoined = false;
+  bool _isJoining = false;
+  int _currentParticipantCount = 0;
 
   @override
   void initState() {
     super.initState();
-    // Initialize like count
+    // Initialize like count and participant count
     if (widget.feedItem.type == FeedItemType.post) {
       _currentLikeCount = widget.feedItem.post?.likesCount ?? 0;
-      _checkIfLiked();
+    } else if (widget.feedItem.type == FeedItemType.campaign) {
+      _currentLikeCount = widget.feedItem.campaign?.likesCount ?? 0;
+      _currentParticipantCount =
+          widget.feedItem.campaign?.currentParticipants ?? 0;
+      _checkIfJoined();
     }
+    _checkIfLiked();
+
     // Trigger load more when this widget is created near the end
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onLoadMore?.call();
@@ -248,51 +326,88 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
   }
 
   Future<void> _checkIfLiked() async {
-    // Only applicable for posts
-    if (widget.feedItem.type != FeedItemType.post) return;
-
     final currentUser = _authService.currentUser;
-    if (currentUser != null && widget.feedItem.post != null) {
-      try {
-        final liked = await _postService.hasUserLikedPost(
+    if (currentUser == null) return;
+
+    try {
+      bool liked = false;
+
+      if (widget.feedItem.type == FeedItemType.post &&
+          widget.feedItem.post != null) {
+        liked = await _postService.hasUserLikedPost(
             widget.feedItem.post!.id, currentUser.id);
-        if (mounted) {
-          setState(() => _isLiked = liked);
-        }
-      } catch (e) {
-        print('Error checking like status: $e');
+      } else if (widget.feedItem.type == FeedItemType.campaign &&
+          widget.feedItem.campaign != null) {
+        liked = await _campaignService.hasUserLikedCampaign(
+            widget.feedItem.campaign!.id, currentUser.id);
       }
+
+      if (mounted) {
+        setState(() => _isLiked = liked);
+      }
+    } catch (e) {
+      print('Error checking like status: $e');
+    }
+  }
+
+  Future<void> _checkIfJoined() async {
+    final currentUser = _authService.currentUser;
+    if (currentUser == null ||
+        widget.feedItem.type != FeedItemType.campaign ||
+        widget.feedItem.campaign == null) {
+      return;
+    }
+
+    try {
+      final joined = await _campaignService.hasUserJoinedCampaign(
+          widget.feedItem.campaign!.id, currentUser.id);
+
+      if (mounted) {
+        setState(() => _isJoined = joined);
+      }
+    } catch (e) {
+      print('Error checking join status: $e');
     }
   }
 
   Future<void> _toggleLike() async {
-    // Only applicable for posts
-    if (widget.feedItem.type != FeedItemType.post ||
-        widget.feedItem.post == null) {
-      return;
-    }
-
     final currentUser = _authService.currentUser;
     if (currentUser == null || _isLiking) return;
 
-    setState(() => _isLiking = true);
+    if (mounted) {
+      setState(() => _isLiking = true);
+    }
 
     try {
       int newLikeCount;
-      if (_isLiked) {
-        // Unlike the post
-        newLikeCount = await _postService.unlikePost(
-            widget.feedItem.post!.id, currentUser.id);
-        setState(() {
-          _isLiked = false;
-          _currentLikeCount = newLikeCount;
-        });
+
+      if (widget.feedItem.type == FeedItemType.post &&
+          widget.feedItem.post != null) {
+        // Handle post likes
+        if (_isLiked) {
+          newLikeCount = await _postService.unlikePost(
+              widget.feedItem.post!.id, currentUser.id);
+        } else {
+          newLikeCount = await _postService.likePost(
+              widget.feedItem.post!.id, currentUser.id);
+        }
+      } else if (widget.feedItem.type == FeedItemType.campaign &&
+          widget.feedItem.campaign != null) {
+        // Handle campaign likes
+        if (_isLiked) {
+          newLikeCount = await _campaignService.unlikeCampaign(
+              widget.feedItem.campaign!.id, currentUser.id);
+        } else {
+          newLikeCount = await _campaignService.likeCampaign(
+              widget.feedItem.campaign!.id, currentUser.id);
+        }
       } else {
-        // Like the post
-        newLikeCount = await _postService.likePost(
-            widget.feedItem.post!.id, currentUser.id);
+        return; // Invalid feed item type
+      }
+
+      if (mounted) {
         setState(() {
-          _isLiked = true;
+          _isLiked = !_isLiked;
           _currentLikeCount = newLikeCount;
         });
       }
@@ -305,6 +420,60 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
     } finally {
       if (mounted) {
         setState(() => _isLiking = false);
+      }
+    }
+  }
+
+  Future<void> _toggleJoin() async {
+    final currentUser = _authService.currentUser;
+    if (currentUser == null ||
+        _isJoining ||
+        widget.feedItem.type != FeedItemType.campaign ||
+        widget.feedItem.campaign == null) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isJoining = true);
+    }
+
+    try {
+      if (_isJoined) {
+        // Leave campaign
+        final success = await _campaignService.leaveCampaign(
+            widget.feedItem.campaign!.id, currentUser.id);
+        if (success && mounted) {
+          setState(() {
+            _isJoined = false;
+            _currentParticipantCount = (_currentParticipantCount - 1)
+                .clamp(0, double.infinity)
+                .toInt();
+          });
+        }
+      } else {
+        // Join campaign
+        final newCount = await _campaignService.joinCampaignWithCount(
+            widget.feedItem.campaign!.id, currentUser.id);
+        if (newCount != null && mounted) {
+          setState(() {
+            _isJoined = true;
+            _currentParticipantCount = newCount;
+          });
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Campaign is full or error occurred')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isJoining = false);
       }
     }
   }
@@ -335,14 +504,20 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
 
     // Add images
     for (final imageUrl in widget.feedItem.imageUrls) {
-      if (imageUrl.startsWith('https://rssnqbqbrejnjeiukrdr.supabase.co')) {
+      if (imageUrl.isNotEmpty &&
+          imageUrl.startsWith('https://rssnqbqbrejnjeiukrdr.supabase.co') &&
+          !imageUrl.contains('blob:')) {
         allMediaUrls.add({'type': 'image', 'url': imageUrl});
       }
     }
 
     // Add videos
     for (final videoUrl in widget.feedItem.videoUrls) {
-      allMediaUrls.add({'type': 'video', 'url': videoUrl});
+      if (videoUrl.isNotEmpty &&
+          videoUrl.startsWith('https://rssnqbqbrejnjeiukrdr.supabase.co') &&
+          !videoUrl.contains('blob:')) {
+        allMediaUrls.add({'type': 'video', 'url': videoUrl});
+      }
     }
 
     if (allMediaUrls.isEmpty) return const SizedBox.shrink();
@@ -364,36 +539,57 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
                     showControls: true,
                     looping: true,
                   )
-                : CachedNetworkImage(
-                    imageUrl: media['url'],
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      height: screenWidth * 0.8,
-                      color: Colors.grey[200],
-                      child: const Center(
-                        child: CircularProgressIndicator(),
-                      ),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      height: screenWidth * 0.8,
-                      color: Colors.grey[300],
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.broken_image, size: 50),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Failed to load image',
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 12,
-                            ),
+                : (media['url'] != null &&
+                        media['url'].toString().isNotEmpty &&
+                        !media['url'].toString().contains('blob:'))
+                    ? CachedNetworkImage(
+                        imageUrl: media['url'],
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          height: screenWidth * 0.8,
+                          color: Colors.grey[200],
+                          child: const Center(
+                            child: CircularProgressIndicator(),
                           ),
-                        ],
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          height: screenWidth * 0.8,
+                          color: Colors.grey[300],
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.broken_image, size: 50),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Failed to load image',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : Container(
+                        height: screenWidth * 0.8,
+                        color: Colors.grey[300],
+                        child: const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.broken_image, size: 50),
+                            SizedBox(height: 8),
+                            Text(
+                              'Invalid image URL',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
           );
         },
       ),
@@ -401,13 +597,21 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
   }
 
   void _handleComment(FeedItem item) {
+    // Get appropriate title/content for the comments page
+    String contentTitle;
+    if (item.type == FeedItemType.campaign && item.title != null) {
+      contentTitle = item.title!;
+    } else {
+      contentTitle = item.content;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => CommentsPage(
           contentId: item.id,
           contentType: item.type == FeedItemType.post ? 'post' : 'campaign',
-          contentTitle: item.title ?? item.content,
+          contentTitle: contentTitle,
         ),
       ),
     );
@@ -443,6 +647,20 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
     }
   }
 
+  void _navigateToUserProfile(UserModel? user) {
+    if (user == null) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => UserProfilePage(
+          userId: user.id,
+          userName: user.fullName ?? user.username,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final feedItem = widget.feedItem;
@@ -468,20 +686,27 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
             ),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: screenWidth * 0.055,
-                  backgroundImage: user?.avatarUrl != null
-                      ? NetworkImage(user!.avatarUrl!)
-                      : null,
-                  child: user?.avatarUrl == null
-                      ? Text(
-                          (user?.username ?? 'U')[0].toUpperCase(),
-                          style: TextStyle(
-                            fontSize: screenWidth * 0.04,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        )
-                      : null,
+                GestureDetector(
+                  onTap: () => _navigateToUserProfile(user),
+                  child: CircleAvatar(
+                    radius: screenWidth * 0.055,
+                    backgroundImage: user?.avatarUrl != null &&
+                            user!.avatarUrl!.isNotEmpty &&
+                            !user.avatarUrl!.contains('blob:')
+                        ? CachedNetworkImageProvider(user.avatarUrl!)
+                        : null,
+                    child: user?.avatarUrl == null ||
+                            user!.avatarUrl!.isEmpty ||
+                            user.avatarUrl!.contains('blob:')
+                        ? Text(
+                            (user?.username ?? 'U')[0].toUpperCase(),
+                            style: TextStyle(
+                              fontSize: screenWidth * 0.04,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        : null,
+                  ),
                 ),
                 SizedBox(width: screenWidth * 0.025),
                 Expanded(
@@ -491,13 +716,16 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
                       Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              user?.fullName ??
-                                  user?.username ??
-                                  'Unknown User',
-                              style: TextStyle(
-                                fontSize: screenWidth * 0.045,
-                                fontWeight: FontWeight.w600,
+                            child: GestureDetector(
+                              onTap: () => _navigateToUserProfile(user),
+                              child: Text(
+                                user?.fullName ??
+                                    user?.username ??
+                                    'Unknown User',
+                                style: TextStyle(
+                                  fontSize: screenWidth * 0.045,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ),
@@ -599,51 +827,68 @@ class _FeedItemWidgetState extends State<FeedItemWidget> {
                   children: [
                     Row(
                       children: [
-                        // Like button (only for posts)
-                        if (feedItem.type == FeedItemType.post) ...[
-                          IconButton(
-                            onPressed: _toggleLike,
-                            icon: Icon(
-                              _isLiked ? Icons.favorite : Icons.favorite_border,
-                              color: _isLiked ? Colors.red : Colors.grey[600],
-                              size: screenWidth * 0.06,
-                            ),
+                        // Like button (for both posts and campaigns)
+                        IconButton(
+                          onPressed: _toggleLike,
+                          icon: Icon(
+                            _isLiked ? Icons.favorite : Icons.favorite_border,
+                            color: _isLiked ? Colors.red : Colors.grey[600],
+                            size: screenWidth * 0.06,
                           ),
-                          Text(
-                            '$_currentLikeCount',
-                            style: TextStyle(
-                              fontSize: screenWidth * 0.035,
-                              color: Colors.grey[600],
-                            ),
+                        ),
+                        Text(
+                          '$_currentLikeCount',
+                          style: TextStyle(
+                            fontSize: screenWidth * 0.035,
+                            color: Colors.grey[600],
                           ),
-                          SizedBox(width: screenWidth * 0.04),
-                          // Comment button
-                          IconButton(
-                            onPressed: () => _handleComment(feedItem),
-                            icon: Icon(
-                              Icons.comment_outlined,
-                              color: Colors.grey[600],
-                              size: screenWidth * 0.06,
-                            ),
+                        ),
+                        SizedBox(width: screenWidth * 0.04),
+                        // Comment button (for both posts and campaigns)
+                        IconButton(
+                          onPressed: () => _handleComment(feedItem),
+                          icon: Icon(
+                            Icons.comment_outlined,
+                            color: Colors.grey[600],
+                            size: screenWidth * 0.06,
                           ),
-                          Text(
-                            '${feedItem.post?.commentsCount ?? 0}',
-                            style: TextStyle(
-                              fontSize: screenWidth * 0.035,
-                              color: Colors.grey[600],
-                            ),
+                        ),
+                        Text(
+                          '${feedItem.type == FeedItemType.post ? feedItem.post?.commentsCount ?? 0 : feedItem.campaign?.commentsCount ?? 0}',
+                          style: TextStyle(
+                            fontSize: screenWidth * 0.035,
+                            color: Colors.grey[600],
                           ),
-                        ],
+                        ),
+                        SizedBox(width: screenWidth * 0.04),
                         // Join button for campaigns
                         if (feedItem.type == FeedItemType.campaign) ...[
-                          Icon(
-                            Icons.people,
-                            color: Colors.grey[600],
-                            size: screenWidth * 0.05,
+                          ElevatedButton.icon(
+                            onPressed: _isJoining ? null : _toggleJoin,
+                            icon: Icon(
+                              _isJoined ? Icons.check : Icons.add,
+                              size: screenWidth * 0.04,
+                            ),
+                            label: Text(
+                              _isJoined ? 'Joined' : 'Join',
+                              style: TextStyle(fontSize: screenWidth * 0.035),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isJoined
+                                  ? Colors.green
+                                  : const Color(0xFF007F8C),
+                              foregroundColor: Colors.white,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: screenWidth * 0.03,
+                                vertical: screenWidth * 0.01,
+                              ),
+                              minimumSize:
+                                  Size(screenWidth * 0.2, screenWidth * 0.08),
+                            ),
                           ),
-                          SizedBox(width: screenWidth * 0.01),
+                          SizedBox(width: screenWidth * 0.02),
                           Text(
-                            '${feedItem.campaign?.currentParticipants ?? 0}${feedItem.campaign?.maxParticipants != null ? '/${feedItem.campaign!.maxParticipants}' : ''} joined',
+                            '$_currentParticipantCount${feedItem.campaign?.maxParticipants != null ? '/${feedItem.campaign!.maxParticipants}' : ''}',
                             style: TextStyle(
                               fontSize: screenWidth * 0.035,
                               color: Colors.grey[600],

@@ -5,8 +5,10 @@ import 'package:staymitra/services/follow_request_service.dart';
 import 'package:staymitra/models/user_model.dart';
 import 'package:staymitra/models/chat_model.dart';
 import 'package:staymitra/services/auth_service.dart';
+import 'package:staymitra/config/supabase_config.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:staymitra/ChatPage/real_chat_screen.dart';
+import 'package:staymitra/Profile/user_profile_page.dart';
 
 class UserSearchPage extends StatefulWidget {
   const UserSearchPage({super.key});
@@ -29,10 +31,32 @@ class _UserSearchPageState extends State<UserSearchPage> {
   bool _isLoading = true;
   String _searchQuery = '';
 
+  // Track follow status for each user
+  final Map<String, String> _followStatuses = {}; // userId -> status
+  final Map<String, bool> _followLoadingStates = {}; // userId -> isLoading
+
   @override
   void initState() {
     super.initState();
     _loadInitialData();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh follow statuses when returning to this page
+    _refreshAllFollowStatuses();
+  }
+
+  void _refreshAllFollowStatuses() {
+    // Refresh follow status for search results
+    for (final user in _searchResults) {
+      _checkFollowStatus(user.id);
+    }
+    // Refresh follow status for recent users
+    for (final user in _recentUsers) {
+      _checkFollowStatus(user.id);
+    }
   }
 
   @override
@@ -53,15 +77,24 @@ class _UserSearchPageState extends State<UserSearchPage> {
           _userService.getRecentUsers(limit: 10),
         ]);
 
-        setState(() {
-          _recentChats = results[0] as List<ChatModel>;
-          _recentUsers = results[1] as List<UserModel>;
-        });
+        if (mounted && results.length >= 2) {
+          setState(() {
+            _recentChats = results[0] as List<ChatModel>;
+            _recentUsers = results[1] as List<UserModel>;
+          });
+        }
+
+        // Check follow status for recent users
+        for (final user in _recentUsers) {
+          _checkFollowStatus(user.id);
+        }
       }
     } catch (e) {
       print('Error loading initial data: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -85,6 +118,11 @@ class _UserSearchPageState extends State<UserSearchPage> {
       setState(() {
         _searchResults = results;
       });
+
+      // Check follow status for each user
+      for (final user in results) {
+        _checkFollowStatus(user.id);
+      }
     } catch (e) {
       print('Error searching users: $e');
       setState(() {
@@ -100,6 +138,33 @@ class _UserSearchPageState extends State<UserSearchPage> {
     if (currentUser == null) return;
 
     try {
+      // Check if both users follow each other
+      final currentUserStatus = await _followRequestService.getFollowStatus(
+        currentUser.id,
+        user.id,
+      );
+      final otherUserStatus = await _followRequestService.getFollowStatus(
+        user.id,
+        currentUser.id,
+      );
+
+      // Check if there's any follow relationship (one-way follow allows chat)
+      final canChat = currentUserStatus != 'not_following' &&
+              currentUserStatus != 'requested' ||
+          otherUserStatus != 'not_following' && otherUserStatus != 'requested';
+
+      if (!canChat) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('You need to follow each other to start chatting'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
       // Create or get existing chat
       final chat = await _chatService.createOrGetChat(
         currentUser.id,
@@ -107,7 +172,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
       );
 
       if (chat != null && mounted) {
-        Navigator.push(
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => RealChatScreen(
@@ -117,6 +182,10 @@ class _UserSearchPageState extends State<UserSearchPage> {
             ),
           ),
         );
+        // Refresh follow status when returning from chat
+        if (mounted) {
+          _checkFollowStatus(user.id);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -146,6 +215,221 @@ class _UserSearchPageState extends State<UserSearchPage> {
     }
   }
 
+  Future<void> _checkFollowStatus(String userId) async {
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      // Check outgoing status (current user -> target user)
+      final outgoingStatus = await _followRequestService.getFollowStatus(
+        currentUser.id,
+        userId,
+      );
+
+      // Check incoming status (target user -> current user)
+      final incomingStatus = await _followRequestService.getFollowStatus(
+        userId,
+        currentUser.id,
+      );
+
+      String finalStatus = outgoingStatus;
+
+      // If there's an incoming request, prioritize showing "Accept Request"
+      if (incomingStatus == 'requested') {
+        finalStatus = 'incoming_request';
+      }
+
+      if (mounted) {
+        setState(() {
+          _followStatuses[userId] = finalStatus;
+        });
+      }
+    } catch (e) {
+      print('Error checking follow status: $e');
+    }
+  }
+
+  Future<void> _handleFollowAction(UserModel user) async {
+    if (_followLoadingStates[user.id] == true) return;
+
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) return;
+
+    // Prevent users from following themselves
+    if (currentUser.id == user.id) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You cannot follow yourself'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _followLoadingStates[user.id] = true);
+
+    try {
+      final currentStatus = _followStatuses[user.id] ?? 'not_following';
+      bool success = false;
+      String message = '';
+
+      switch (currentStatus) {
+        case 'not_following':
+          // First check current status to avoid unnecessary requests
+          final currentStatus = await _followRequestService.getFollowStatus(
+            _authService.currentUser!.id,
+            user.id,
+          );
+
+          if (currentStatus == 'following' ||
+              currentStatus == 'mutual' ||
+              currentStatus == 'followed_by') {
+            message = 'You are already connected!';
+            _followStatuses[user.id] = currentStatus;
+            success = true;
+          } else if (currentStatus == 'requested') {
+            message = 'Follow request already sent';
+            _followStatuses[user.id] = 'requested';
+            success = true;
+          } else {
+            success = await _followRequestService.sendFollowRequest(user.id);
+            if (success) {
+              message = 'Follow request sent!';
+              _followStatuses[user.id] = 'requested';
+            } else {
+              message = 'Failed to send follow request';
+            }
+          }
+          break;
+
+        case 'requested':
+          success = await _followRequestService.cancelFollowRequest(user.id);
+          message =
+              success ? 'Follow request cancelled' : 'Failed to cancel request';
+          if (success) _followStatuses[user.id] = 'not_following';
+          break;
+
+        case 'incoming_request':
+          // Accept the incoming follow request
+          // First, find the request ID
+          final requestId = await _getIncomingRequestId(user.id);
+          if (requestId != null) {
+            success =
+                await _followRequestService.acceptFollowRequest(requestId);
+            message = success
+                ? 'Follow request accepted!'
+                : 'Failed to accept request';
+            if (success) {
+              // Check the new status after accepting
+              _checkFollowStatus(user.id);
+            }
+          } else {
+            message = 'Request not found';
+          }
+          break;
+
+        case 'followed_by':
+          // User follows back
+          success = await _followRequestService.sendFollowRequest(user.id);
+          if (success) {
+            message = 'Follow request sent!';
+            _followStatuses[user.id] = 'mutual'; // Now mutual follow
+          } else {
+            message = 'Failed to send follow request';
+          }
+          break;
+
+        case 'following':
+        case 'mutual':
+          success = await _followRequestService.unfollowUser(user.id);
+          message =
+              success ? 'Unfollowed ${user.username}' : 'Failed to unfollow';
+          if (success) _followStatuses[user.id] = 'not_following';
+          break;
+      }
+
+      if (mounted) {
+        setState(() => _followLoadingStates[user.id] = false);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _followLoadingStates[user.id] = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<String?> _getIncomingRequestId(String fromUserId) async {
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) return null;
+
+    try {
+      final response = await supabase
+          .from('follow_requests')
+          .select('id')
+          .eq('requester_id', fromUserId)
+          .eq('requested_id', currentUser.id)
+          .eq('status', 'pending')
+          .maybeSingle();
+
+      return response?['id'] as String?;
+    } catch (e) {
+      print('Error getting incoming request ID: $e');
+      return null;
+    }
+  }
+
+  String _getFollowButtonText(String userId) {
+    final status = _followStatuses[userId] ?? 'not_following';
+    switch (status) {
+      case 'not_following':
+        return 'Follow';
+      case 'requested':
+        return 'Requested';
+      case 'incoming_request':
+        return 'Accept';
+      case 'following':
+        return 'Following';
+      case 'mutual':
+        return 'Following';
+      case 'followed_by':
+        return 'Follow';
+      default:
+        return 'Follow';
+    }
+  }
+
+  Color _getFollowButtonColor(String userId) {
+    final status = _followStatuses[userId] ?? 'not_following';
+    switch (status) {
+      case 'not_following':
+        return const Color(0xFF007F8C);
+      case 'requested':
+        return Colors.orange;
+      case 'incoming_request':
+        return Colors.green;
+      case 'following':
+      case 'mutual':
+        return Colors.grey;
+      case 'followed_by':
+        return Colors.blue;
+      default:
+        return const Color(0xFF007F8C);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -164,7 +448,14 @@ class _UserSearchPageState extends State<UserSearchPage> {
               Row(
                 children: [
                   IconButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () {
+                      if (Navigator.canPop(context)) {
+                        Navigator.pop(context);
+                      } else {
+                        // Fallback to main page
+                        Navigator.pushReplacementNamed(context, '/main');
+                      }
+                    },
                     icon: const Icon(Icons.arrow_back),
                   ),
                   Expanded(
@@ -331,6 +622,17 @@ class _UserSearchPageState extends State<UserSearchPage> {
       ),
       child: ListTile(
         onTap: () => _startChat(user),
+        onLongPress: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => UserProfilePage(
+                userId: user.id,
+                userName: user.username,
+              ),
+            ),
+          );
+        },
         contentPadding: EdgeInsets.zero,
         leading: CircleAvatar(
           radius: screenWidth * 0.06,
@@ -339,7 +641,9 @@ class _UserSearchPageState extends State<UserSearchPage> {
               : null,
           child: user.avatarUrl == null
               ? Text(
-                  user.username[0].toUpperCase(),
+                  user.username.isNotEmpty
+                      ? user.username[0].toUpperCase()
+                      : '?',
                   style: TextStyle(
                     fontSize: screenWidth * 0.04,
                     fontWeight: FontWeight.bold,
@@ -376,6 +680,45 @@ class _UserSearchPageState extends State<UserSearchPage> {
               ),
           ],
         ),
+        trailing: _authService.currentUser?.id == user.id
+            ? null // Hide follow button for current user
+            : SizedBox(
+                width: screenWidth * 0.2,
+                child: ElevatedButton(
+                  onPressed: _followLoadingStates[user.id] == true
+                      ? null
+                      : () => _handleFollowAction(user),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _getFollowButtonColor(user.id),
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: screenWidth * 0.02,
+                      vertical: screenWidth * 0.01,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(screenWidth * 0.04),
+                    ),
+                    elevation: 0,
+                    minimumSize: Size(screenWidth * 0.18, screenWidth * 0.08),
+                  ),
+                  child: _followLoadingStates[user.id] == true
+                      ? SizedBox(
+                          width: screenWidth * 0.03,
+                          height: screenWidth * 0.03,
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          _getFollowButtonText(user.id),
+                          style: TextStyle(
+                            fontSize: screenWidth * 0.03,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
+              ),
       ),
     );
   }
@@ -407,7 +750,9 @@ class _UserSearchPageState extends State<UserSearchPage> {
               : null,
           child: otherUser.avatarUrl == null
               ? Text(
-                  otherUser.username[0].toUpperCase(),
+                  otherUser.username.isNotEmpty
+                      ? otherUser.username[0].toUpperCase()
+                      : '?',
                   style: TextStyle(
                     fontSize: screenWidth * 0.04,
                     fontWeight: FontWeight.bold,
@@ -419,29 +764,69 @@ class _UserSearchPageState extends State<UserSearchPage> {
           otherUser.fullName ?? otherUser.username,
           style: TextStyle(
             fontSize: screenWidth * 0.04,
-            fontWeight: FontWeight.w600,
+            fontWeight:
+                chat.unreadCount > 0 ? FontWeight.bold : FontWeight.w600,
           ),
         ),
         subtitle: Text(
           chat.lastMessage?.content ?? 'Start a conversation',
           style: TextStyle(
             fontSize: screenWidth * 0.035,
-            color: Colors.grey[600],
+            color: chat.unreadCount > 0 ? Colors.black87 : Colors.grey[600],
+            fontWeight:
+                chat.unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => RealChatScreen(
-                peerId: otherUser.id,
-                peerName: otherUser.fullName ?? otherUser.username,
-                peerAvatar: otherUser.avatarUrl,
+        trailing: chat.unreadCount > 0
+            ? Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  chat.unreadCount > 99 ? '99+' : '${chat.unreadCount}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              )
+            : null,
+        onTap: () async {
+          // Mark messages as read when opening chat
+          final currentUser = _authService.currentUser;
+          if (currentUser != null) {
+            print('DEBUG: About to mark messages as read for chat ${chat.id}');
+            await _chatService.markMessagesAsRead(chat.id, currentUser.id);
+            print(
+                'DEBUG: Finished marking messages as read, refreshing chat list');
+            // Immediately refresh the chat list to update badges
+            if (mounted) {
+              await _loadInitialData();
+            }
+          }
+
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => RealChatScreen(
+                  peerId: otherUser.id,
+                  peerName: otherUser.fullName ?? otherUser.username,
+                  peerAvatar: otherUser.avatarUrl,
+                ),
               ),
-            ),
-          );
+            ).then((_) {
+              // Refresh chat list again when returning from chat
+              if (mounted) {
+                _loadInitialData();
+              }
+            });
+          }
         },
       ),
     );

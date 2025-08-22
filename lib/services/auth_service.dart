@@ -33,6 +33,11 @@ class AuthService {
     }
   }
 
+  // Refresh current user profile (force reload from database)
+  Future<UserModel?> refreshCurrentUserProfile() async {
+    return await getCurrentUserProfile();
+  }
+
   // Sign up with email and password (with email verification)
   Future<AuthResponse> signUp({
     required String email,

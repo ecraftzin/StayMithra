@@ -4,7 +4,6 @@ import 'package:staymitra/services/user_service.dart';
 import 'package:staymitra/services/storage_service.dart';
 import 'package:staymitra/models/user_model.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -92,8 +91,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
         setState(() => _isUploadingPhoto = true);
 
         // Upload to storage
-        final avatarUrl = await _storageService.uploadImage(
-          File(image.path),
+        final avatarUrl = await _storageService.uploadImageFromXFile(
+          image,
           'avatars',
           folder: 'users',
         );
@@ -175,9 +174,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
   String _getInitials() {
     if (_currentUser?.fullName != null && _currentUser!.fullName!.isNotEmpty) {
       final names = _currentUser!.fullName!.split(' ');
-      if (names.length >= 2) {
+      if (names.length >= 2 && names[0].isNotEmpty && names[1].isNotEmpty) {
         return '${names[0][0]}${names[1][0]}'.toUpperCase();
-      } else {
+      } else if (names.isNotEmpty && names[0].isNotEmpty) {
         return names[0][0].toUpperCase();
       }
     } else if (_currentUser?.username != null &&

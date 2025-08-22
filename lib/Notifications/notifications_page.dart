@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/notification_service.dart';
 import '../services/follow_request_service.dart';
+import '../services/auth_service.dart';
 import '../models/notification_model.dart';
+import '../config/supabase_config.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -13,7 +15,8 @@ class NotificationsPage extends StatefulWidget {
 class _NotificationsPageState extends State<NotificationsPage> {
   final NotificationService _notificationService = NotificationService();
   final FollowRequestService _followRequestService = FollowRequestService();
-  
+  final AuthService _authService = AuthService();
+
   List<NotificationModel> _notifications = [];
   bool _isLoading = true;
   bool _isLoadingMore = false;
@@ -35,20 +38,27 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
       _loadMoreNotifications();
     }
   }
 
   Future<void> _loadNotifications() async {
     setState(() => _isLoading = true);
-    
+
     try {
       final notifications = await _notificationService.getNotifications(
         limit: _pageSize,
         offset: 0,
       );
-      
+
+      print('DEBUG: Loaded ${notifications.length} notifications');
+      for (final notification in notifications) {
+        print(
+            'DEBUG: Notification ${notification.id} - Type: ${notification.type}, Title: ${notification.title}, Data: ${notification.data}');
+      }
+
       if (mounted) {
         setState(() {
           _notifications = notifications;
@@ -71,15 +81,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   Future<void> _loadMoreNotifications() async {
     if (_isLoadingMore) return;
-    
+
     setState(() => _isLoadingMore = true);
-    
+
     try {
       final moreNotifications = await _notificationService.getNotifications(
         limit: _pageSize,
         offset: (_currentPage + 1) * _pageSize,
       );
-      
+
       if (mounted && moreNotifications.isNotEmpty) {
         setState(() {
           _notifications.addAll(moreNotifications);
@@ -111,135 +121,489 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Future<void> _markAllAsRead() async {
     await _notificationService.markAllAsRead();
     setState(() {
-      _notifications = _notifications.map((n) => n.copyWith(isRead: true)).toList();
+      _notifications =
+          _notifications.map((n) => n.copyWith(isRead: true)).toList();
     });
   }
 
-  Future<void> _handleFollowRequest(String requestId, bool accept) async {
-    bool success;
-    if (accept) {
-      success = await _followRequestService.acceptFollowRequest(requestId);
-    } else {
-      success = await _followRequestService.rejectFollowRequest(requestId);
+  Future<void> _handleFollowRequest(String notificationId, bool accept) async {
+    // Check if this notification has already been processed
+    final notification =
+        _notifications.firstWhere((n) => n.id == notificationId);
+    if (notification.type == 'follow_accepted_by_you') {
+      print('DEBUG: Notification already processed, ignoring');
+      return;
     }
 
-    if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(accept ? 'Follow request accepted' : 'Follow request rejected'),
-          backgroundColor: accept ? Colors.green : Colors.orange,
-        ),
-      );
-      _loadNotifications(); // Refresh notifications
+    // Remove notification immediately for better responsiveness
+    if (mounted && accept) {
+      setState(() {
+        _notifications.removeWhere((n) => n.id == notificationId);
+      });
+    }
+
+    try {
+      // Find the notification to get the actual follow request data
+      final notification =
+          _notifications.firstWhere((n) => n.id == notificationId);
+      final requesterId = notification.data?['requester_id'] as String?;
+
+      if (requesterId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error: Invalid request data'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Find the actual follow request ID
+      final currentUser = _authService.currentUser;
+      if (currentUser == null) return;
+
+      final followRequest = await supabase
+          .from('follow_requests')
+          .select('id')
+          .eq('requester_id', requesterId)
+          .eq('requested_id', currentUser.id)
+          .eq('status', 'pending')
+          .limit(1)
+          .maybeSingle();
+
+      if (followRequest == null) {
+        // Check if already accepted
+        final existingFollow = await supabase
+            .from('follows')
+            .select('id')
+            .eq('follower_id', requesterId)
+            .eq('following_id', currentUser.id)
+            .maybeSingle();
+
+        if (existingFollow != null) {
+          // Already accepted, remove the notification instead of updating it
+          await _deleteNotification(notificationId);
+          await _loadNotifications(); // Refresh the list
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Follow request was already accepted'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Follow request not found or already processed'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      final actualRequestId = followRequest['id'] as String;
+      final requesterUsername =
+          notification.data?['requester_username'] as String? ?? 'User';
+      bool success = false;
+
+      if (accept) {
+        success =
+            await _followRequestService.acceptFollowRequest(actualRequestId);
+        if (success) {
+          print(
+              'DEBUG: Follow request accepted successfully, removing notification $notificationId');
+          // Remove the notification after successful acceptance
+          await _deleteNotification(notificationId);
+          print('DEBUG: Notification removed, reloading notifications');
+          // Reload notifications to reflect changes
+          await _loadNotifications();
+
+          // Show success message
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('You are now friends with $requesterUsername!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          print('DEBUG: Failed to accept follow request');
+        }
+      } else {
+        success =
+            await _followRequestService.rejectFollowRequest(actualRequestId);
+        if (success) {
+          // Remove notification for rejected requests
+          await _deleteNotification(notificationId);
+          await _loadNotifications();
+        }
+      }
+
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(accept
+                ? 'You are now friends with $requesterUsername!'
+                : 'Follow request rejected'),
+            backgroundColor: accept ? Colors.green : Colors.orange,
+          ),
+        );
+        _loadNotifications(); // Refresh notifications
+
+        // Notify other parts of the app that follow status changed
+        if (accept) {
+          _notifyFollowStatusChanged();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   Widget _buildNotificationItem(NotificationModel notification) {
     final screenWidth = MediaQuery.of(context).size.width;
-    
-    return Card(
-      margin: EdgeInsets.symmetric(
-        horizontal: screenWidth * 0.04,
-        vertical: screenWidth * 0.02,
+
+    return Dismissible(
+      key: Key(notification.id),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (direction) async {
+        return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Delete Notification'),
+            content: const Text('Do you want to delete this notification?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        );
+      },
+      onDismissed: (direction) async {
+        await _deleteNotification(notification.id);
+        if (mounted) {
+          setState(() {
+            _notifications.removeWhere((n) => n.id == notification.id);
+          });
+        }
+      },
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: EdgeInsets.only(right: screenWidth * 0.05),
+        color: Colors.red,
+        child: Icon(
+          Icons.delete,
+          color: Colors.white,
+          size: screenWidth * 0.06,
+        ),
       ),
-      elevation: notification.isRead ? 1 : 3,
-      child: ListTile(
-        onTap: () => _markAsRead(notification),
-        leading: CircleAvatar(
-          backgroundColor: Color(int.parse('0xFF${notification.colorHex.substring(1)}')),
-          child: Icon(
-            _getIconData(notification.iconName),
-            color: Colors.white,
-            size: screenWidth * 0.05,
+      child: Container(
+        margin: EdgeInsets.symmetric(
+          horizontal: screenWidth * 0.04,
+          vertical: screenWidth * 0.01,
+        ),
+        decoration: BoxDecoration(
+          color: notification.isRead
+              ? Colors.white
+              : Colors.blue.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(screenWidth * 0.02),
+          border: Border.all(
+            color: notification.isRead
+                ? Colors.grey[200]!
+                : Colors.blue.withOpacity(0.2),
+            width: 1,
           ),
         ),
-        title: Text(
-          notification.title,
-          style: TextStyle(
-            fontWeight: notification.isRead ? FontWeight.normal : FontWeight.bold,
-            fontSize: screenWidth * 0.04,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              notification.message,
+        child: ListTile(
+          onTap: () => _markAsRead(notification),
+          contentPadding: EdgeInsets.all(screenWidth * 0.03),
+          leading: _buildNotificationAvatar(notification, screenWidth),
+          title: RichText(
+            text: TextSpan(
               style: TextStyle(
-                fontSize: screenWidth * 0.035,
+                fontSize: screenWidth * 0.037,
+                color: Colors.black87,
+              ),
+              children: _buildNotificationText(notification),
+            ),
+          ),
+          subtitle: Padding(
+            padding: EdgeInsets.only(top: screenWidth * 0.01),
+            child: Text(
+              _getTimeAgo(notification.createdAt),
+              style: TextStyle(
+                fontSize: screenWidth * 0.032,
                 color: Colors.grey[600],
               ),
             ),
-            SizedBox(height: screenWidth * 0.01),
-            Text(
-              notification.timeAgo,
-              style: TextStyle(
-                fontSize: screenWidth * 0.03,
-                color: Colors.grey[500],
-              ),
-            ),
-          ],
+          ),
+          trailing: _buildNotificationTrailing(notification, screenWidth),
         ),
-        trailing: notification.type == 'follow_request' 
-            ? _buildFollowRequestActions(notification)
-            : notification.isRead 
-                ? null 
-                : Container(
-                    width: screenWidth * 0.03,
-                    height: screenWidth * 0.03,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF007F8C),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
       ),
     );
   }
 
-  Widget _buildFollowRequestActions(NotificationModel notification) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final requestId = notification.data?['requester_id'] as String?;
-    
-    if (requestId == null) return const SizedBox.shrink();
-    
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+  Widget _buildNotificationAvatar(
+      NotificationModel notification, double screenWidth) {
+    final data = notification.data ?? {};
+    final avatarUrl = data['requester_avatar'] ?? data['user_avatar'];
+    final username = data['requester_username'] ?? data['username'] ?? 'User';
+
+    return Stack(
       children: [
-        IconButton(
-          onPressed: () => _handleFollowRequest(notification.id, true),
-          icon: Icon(
-            Icons.check_circle,
-            color: Colors.green,
-            size: screenWidth * 0.06,
-          ),
+        CircleAvatar(
+          radius: screenWidth * 0.06,
+          backgroundColor: const Color(0xFF007F8C),
+          backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+          child: avatarUrl == null
+              ? Text(
+                  username.isNotEmpty ? username[0].toUpperCase() : '?',
+                  style: TextStyle(
+                    fontSize: screenWidth * 0.04,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                )
+              : null,
         ),
-        IconButton(
-          onPressed: () => _handleFollowRequest(notification.id, false),
-          icon: Icon(
-            Icons.cancel,
-            color: Colors.red,
-            size: screenWidth * 0.06,
+        // Activity type icon
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: Container(
+            padding: EdgeInsets.all(screenWidth * 0.008),
+            decoration: BoxDecoration(
+              color: _getActivityColor(notification.type),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child: Icon(
+              _getActivityIcon(notification.type),
+              size: screenWidth * 0.03,
+              color: Colors.white,
+            ),
           ),
         ),
       ],
     );
   }
 
-  IconData _getIconData(String iconName) {
-    switch (iconName) {
-      case 'person_add':
+  List<TextSpan> _buildNotificationText(NotificationModel notification) {
+    final data = notification.data ?? {};
+    final username =
+        data['requester_username'] ?? data['username'] ?? 'Someone';
+
+    switch (notification.type) {
+      case 'follow_request':
+        return [
+          TextSpan(
+            text: username,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const TextSpan(text: ' wants to follow you'),
+        ];
+      case 'follow_accepted':
+        return [
+          TextSpan(
+            text: username,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const TextSpan(text: ' accepted your follow request'),
+        ];
+      case 'follow_accepted_by_you':
+        return [
+          const TextSpan(text: 'Request Accepted - You are now friends with '),
+          TextSpan(
+            text: username,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const TextSpan(text: '!'),
+        ];
+      case 'post_like':
+        return [
+          TextSpan(
+            text: username,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const TextSpan(text: ' liked your post'),
+        ];
+      case 'post_comment':
+        return [
+          TextSpan(
+            text: username,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const TextSpan(text: ' commented on your post'),
+        ];
+      case 'campaign_like':
+        return [
+          TextSpan(
+            text: username,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const TextSpan(text: ' liked your campaign'),
+        ];
+      case 'campaign_comment':
+        return [
+          TextSpan(
+            text: username,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const TextSpan(text: ' commented on your campaign'),
+        ];
+      default:
+        return [TextSpan(text: notification.message)];
+    }
+  }
+
+  Widget? _buildNotificationTrailing(
+      NotificationModel notification, double screenWidth) {
+    if (notification.type == 'follow_request') {
+      return _buildFollowRequestActions(notification);
+    } else if (notification.type == 'follow_accepted_by_you') {
+      // Show a checkmark for accepted requests
+      return Container(
+        padding: EdgeInsets.all(screenWidth * 0.02),
+        decoration: const BoxDecoration(
+          color: Colors.green,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          Icons.check,
+          color: Colors.white,
+          size: screenWidth * 0.04,
+        ),
+      );
+    } else if (!notification.isRead) {
+      return Container(
+        width: screenWidth * 0.025,
+        height: screenWidth * 0.025,
+        decoration: const BoxDecoration(
+          color: Color(0xFF007F8C),
+          shape: BoxShape.circle,
+        ),
+      );
+    }
+    return null;
+  }
+
+  Color _getActivityColor(String type) {
+    switch (type) {
+      case 'follow_request':
+      case 'follow_accepted':
+        return Colors.blue;
+      case 'post_like':
+      case 'campaign_like':
+        return Colors.red;
+      case 'post_comment':
+      case 'campaign_comment':
+        return Colors.green;
+      default:
+        return const Color(0xFF007F8C);
+    }
+  }
+
+  IconData _getActivityIcon(String type) {
+    switch (type) {
+      case 'follow_request':
+      case 'follow_accepted':
         return Icons.person_add;
-      case 'person_add_alt_1':
-        return Icons.person_add_alt_1;
-      case 'favorite':
+      case 'post_like':
+      case 'campaign_like':
         return Icons.favorite;
-      case 'comment':
+      case 'post_comment':
+      case 'campaign_comment':
         return Icons.comment;
-      case 'share':
-        return Icons.share;
       default:
         return Icons.notifications;
     }
+  }
+
+  String _getTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 7) {
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    } else if (difference.inDays > 0) {
+      return '${difference.inDays}d';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m';
+    } else {
+      return 'now';
+    }
+  }
+
+  Widget _buildFollowRequestActions(NotificationModel notification) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final requestId = notification.data?['requester_id'] as String?;
+
+    if (requestId == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: screenWidth * 0.03,
+        vertical: screenWidth * 0.01,
+      ),
+      child: ElevatedButton(
+        onPressed: () => _handleFollowRequest(notification.id, true),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+          padding: EdgeInsets.symmetric(
+            horizontal: screenWidth * 0.04,
+            vertical: screenWidth * 0.02,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(screenWidth * 0.04),
+          ),
+          elevation: 0,
+          minimumSize: Size(screenWidth * 0.2, screenWidth * 0.08),
+        ),
+        child: Text(
+          'Accept',
+          style: TextStyle(
+            fontSize: screenWidth * 0.035,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteNotification(String notificationId) async {
+    try {
+      await supabase.from('notifications').delete().eq('id', notificationId);
+    } catch (e) {
+      print('Error deleting notification: $e');
+    }
+  }
+
+  void _notifyFollowStatusChanged() {
+    // This could be expanded to use a state management solution
+    // For now, we'll rely on the didChangeDependencies in search page
+    // to refresh when user returns to search
   }
 
   @override
@@ -314,7 +678,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                           ),
                         );
                       }
-                      
+
                       return _buildNotificationItem(_notifications[index]);
                     },
                   ),

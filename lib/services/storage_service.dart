@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import 'package:uuid/uuid.dart';
+import 'package:image_picker/image_picker.dart';
 
 class StorageService {
   static final StorageService _instance = StorageService._internal();
@@ -82,6 +83,43 @@ class StorageService {
     }
   }
 
+  // Upload image from XFile (works for both web and mobile)
+  Future<String?> uploadImageFromXFile(XFile xFile, String bucket,
+      {String? folder}) async {
+    try {
+      await _ensureBucketExists(bucket);
+
+      // Get file extension from name instead of path to avoid blob URL issues
+      String fileExtension = 'jpg'; // default
+      if (xFile.name.contains('.')) {
+        fileExtension = xFile.name.split('.').last.toLowerCase();
+      }
+
+      final fileName = '${_uuid.v4()}.$fileExtension';
+      final filePath = folder != null ? '$folder/$fileName' : fileName;
+
+      print('Uploading image: $fileName to path: $filePath');
+
+      // Read file as bytes (works for both web and mobile)
+      final bytes = await xFile.readAsBytes();
+      print('Image file size: ${bytes.length} bytes');
+
+      // Upload using binary data with file options
+      await _supabase.storage.from(bucket).uploadBinary(
+            filePath,
+            bytes,
+            fileOptions: const FileOptions(upsert: true),
+          );
+
+      final publicUrl = _supabase.storage.from(bucket).getPublicUrl(filePath);
+      print('Image upload successful: $publicUrl');
+      return publicUrl;
+    } catch (e) {
+      print('Error uploading image from XFile: $e');
+      return null;
+    }
+  }
+
   // Upload multiple images
   Future<List<String>> uploadImages(List<File> imageFiles, String bucket,
       {String? folder}) async {
@@ -116,6 +154,81 @@ class StorageService {
       return url.substring(bucketUrl.length);
     }
     return url;
+  }
+
+  // Upload multiple videos
+  Future<List<String>> uploadVideos(List<File> videoFiles, String bucket,
+      {String? folder}) async {
+    final uploadedUrls = <String>[];
+
+    for (final videoFile in videoFiles) {
+      final url = await uploadVideo(videoFile, bucket, folder: folder);
+      if (url != null) {
+        uploadedUrls.add(url);
+      }
+    }
+
+    return uploadedUrls;
+  }
+
+  // Upload video from XFile (works for both web and mobile)
+  Future<String?> uploadVideoFromXFile(XFile xFile, String bucket,
+      {String? folder}) async {
+    try {
+      await _ensureBucketExists(bucket);
+
+      // Get file extension from name instead of path to avoid blob URL issues
+      String fileExtension = 'mp4'; // default
+      if (xFile.name.contains('.')) {
+        fileExtension = xFile.name.split('.').last.toLowerCase();
+      }
+
+      final fileName = '${_uuid.v4()}.$fileExtension';
+      final filePath = folder != null ? '$folder/$fileName' : fileName;
+
+      print('Uploading video: $fileName to path: $filePath');
+
+      // Read file as bytes (works for both web and mobile)
+      final bytes = await xFile.readAsBytes();
+      print('Video file size: ${bytes.length} bytes');
+
+      // Upload using binary data with file options
+      await _supabase.storage.from(bucket).uploadBinary(
+            filePath,
+            bytes,
+            fileOptions: const FileOptions(upsert: true),
+          );
+
+      final publicUrl = _supabase.storage.from(bucket).getPublicUrl(filePath);
+      print('Video upload successful: $publicUrl');
+      return publicUrl;
+    } catch (e) {
+      print('Error uploading video from XFile: $e');
+      return null;
+    }
+  }
+
+  // Upload single video
+  Future<String?> uploadVideo(File videoFile, String bucket,
+      {String? folder}) async {
+    try {
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${videoFile.path.split('/').last}';
+      final filePath = folder != null ? '$folder/$fileName' : fileName;
+
+      final response =
+          await _supabase.storage.from(bucket).upload(filePath, videoFile);
+
+      if (response.isNotEmpty) {
+        final publicUrl = _supabase.storage.from(bucket).getPublicUrl(filePath);
+
+        return publicUrl;
+      }
+      return null;
+    } catch (e) {
+      print('Error uploading video: $e');
+      return null;
+    }
   }
 
   // Create storage buckets if they don't exist

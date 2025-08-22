@@ -3,7 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:staymitra/services/campaign_service.dart';
 import 'package:staymitra/services/auth_service.dart';
 import 'package:staymitra/services/storage_service.dart';
-import 'dart:io';
+import 'dart:typed_data';
 
 class CreateCampaignPage extends StatefulWidget {
   const CreateCampaignPage({super.key});
@@ -133,10 +133,16 @@ class _CreateCampaignPageState extends State<CreateCampaignPage> {
       List<String> imageUrls = [];
       if (_selectedImages.isNotEmpty) {
         print('Uploading ${_selectedImages.length} campaign images...');
-        final imageFiles =
-            _selectedImages.map((xFile) => File(xFile.path)).toList();
-        imageUrls = await _storageService.uploadImages(imageFiles, 'campaigns',
-            folder: 'campaign_images');
+        for (final xFile in _selectedImages) {
+          final imageUrl = await _storageService.uploadImageFromXFile(
+            xFile,
+            'campaigns',
+            folder: 'campaign_images',
+          );
+          if (imageUrl != null) {
+            imageUrls.add(imageUrl);
+          }
+        }
         print('Campaign upload completed. URLs: $imageUrls');
       } else {
         print('No images selected for campaign');
@@ -499,11 +505,27 @@ class _CreateCampaignPageState extends State<CreateCampaignPage> {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(
-                          File(_selectedImages[index].path),
-                          width: screenWidth * 0.25,
-                          height: screenWidth * 0.25,
-                          fit: BoxFit.cover,
+                        child: FutureBuilder<Uint8List>(
+                          future: _selectedImages[index].readAsBytes(),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasData) {
+                              return Image.memory(
+                                snapshot.data!,
+                                width: screenWidth * 0.25,
+                                height: screenWidth * 0.25,
+                                fit: BoxFit.cover,
+                              );
+                            } else {
+                              return Container(
+                                width: screenWidth * 0.25,
+                                height: screenWidth * 0.25,
+                                color: Colors.grey[300],
+                                child: const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
+                            }
+                          },
                         ),
                       ),
                       Positioned(

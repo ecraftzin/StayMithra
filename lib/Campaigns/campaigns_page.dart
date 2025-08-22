@@ -24,6 +24,12 @@ class _CampaignsPageState extends State<CampaignsPage> {
   final int _campaignsPerPage = 10;
   RealtimeChannel? _campaignsSubscription;
 
+  // Filter variables
+  String? _selectedLocation;
+  String? _selectedCategory;
+  DateTimeRange? _selectedDateRange;
+  final TextEditingController _searchController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -49,7 +55,7 @@ class _CampaignsPageState extends State<CampaignsPage> {
   }
 
   Future<void> _loadCampaigns({bool refresh = false}) async {
-    if (refresh) {
+    if (refresh && mounted) {
       setState(() {
         _isLoading = true;
         _currentPage = 0;
@@ -58,34 +64,56 @@ class _CampaignsPageState extends State<CampaignsPage> {
     }
 
     try {
-      final campaigns = await _campaignService.getAllCampaigns(
-        limit: _campaignsPerPage,
-        offset: _currentPage * _campaignsPerPage,
-      );
+      List<CampaignModel> campaigns;
 
-      setState(() {
-        if (refresh) {
-          _campaigns = campaigns;
-        } else {
-          _campaigns.addAll(campaigns);
-        }
-        _currentPage++;
-        _isLoading = false;
-        _isLoadingMore = false;
-      });
+      // Check if any filters are applied
+      if (_selectedLocation != null ||
+          _selectedCategory != null ||
+          _selectedDateRange != null) {
+        campaigns = await _campaignService.getFilteredCampaigns(
+          limit: _campaignsPerPage,
+          offset: _currentPage * _campaignsPerPage,
+          location: _selectedLocation,
+          category: _selectedCategory,
+          startDate: _selectedDateRange?.start,
+          endDate: _selectedDateRange?.end,
+        );
+      } else {
+        campaigns = await _campaignService.getAllCampaigns(
+          limit: _campaignsPerPage,
+          offset: _currentPage * _campaignsPerPage,
+        );
+      }
+
+      if (mounted) {
+        setState(() {
+          if (refresh) {
+            _campaigns = campaigns;
+          } else {
+            _campaigns.addAll(campaigns);
+          }
+          _currentPage++;
+          _isLoading = false;
+          _isLoadingMore = false;
+        });
+      }
     } catch (e) {
       print('Error loading campaigns: $e');
-      setState(() {
-        _isLoading = false;
-        _isLoadingMore = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isLoadingMore = false;
+        });
+      }
     }
   }
 
   Future<void> _loadMoreCampaigns() async {
     if (_isLoadingMore) return;
 
-    setState(() => _isLoadingMore = true);
+    if (mounted) {
+      setState(() => _isLoadingMore = true);
+    }
     await _loadCampaigns();
   }
 
@@ -98,6 +126,137 @@ class _CampaignsPageState extends State<CampaignsPage> {
     if (result == true) {
       _loadCampaigns(refresh: true);
     }
+  }
+
+  void _showFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Filter Campaigns'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Location filter
+                    DropdownButtonFormField<String>(
+                      value: _selectedLocation,
+                      decoration: const InputDecoration(
+                        labelText: 'Location',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                            value: null, child: Text('All Locations')),
+                        DropdownMenuItem(
+                            value: 'Mumbai', child: Text('Mumbai')),
+                        DropdownMenuItem(value: 'Delhi', child: Text('Delhi')),
+                        DropdownMenuItem(
+                            value: 'Bangalore', child: Text('Bangalore')),
+                        DropdownMenuItem(
+                            value: 'Chennai', child: Text('Chennai')),
+                        DropdownMenuItem(
+                            value: 'Kolkata', child: Text('Kolkata')),
+                        DropdownMenuItem(
+                            value: 'Hyderabad', child: Text('Hyderabad')),
+                        DropdownMenuItem(value: 'Pune', child: Text('Pune')),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedLocation = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Category filter
+                    DropdownButtonFormField<String>(
+                      value: _selectedCategory,
+                      decoration: const InputDecoration(
+                        labelText: 'Category',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                            value: null, child: Text('All Categories')),
+                        DropdownMenuItem(
+                            value: 'Social', child: Text('Social')),
+                        DropdownMenuItem(
+                            value: 'Educational', child: Text('Educational')),
+                        DropdownMenuItem(
+                            value: 'Environmental',
+                            child: Text('Environmental')),
+                        DropdownMenuItem(
+                            value: 'Health', child: Text('Health')),
+                        DropdownMenuItem(
+                            value: 'Sports', child: Text('Sports')),
+                        DropdownMenuItem(
+                            value: 'Cultural', child: Text('Cultural')),
+                        DropdownMenuItem(
+                            value: 'Technology', child: Text('Technology')),
+                        DropdownMenuItem(
+                            value: 'Business', child: Text('Business')),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedCategory = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Date range filter
+                    ListTile(
+                      title: Text(_selectedDateRange == null
+                          ? 'Select Date Range'
+                          : '${_selectedDateRange!.start.day}/${_selectedDateRange!.start.month} - ${_selectedDateRange!.end.day}/${_selectedDateRange!.end.month}'),
+                      trailing: const Icon(Icons.date_range),
+                      onTap: () async {
+                        final DateTimeRange? picked = await showDateRangePicker(
+                          context: context,
+                          firstDate: DateTime.now(),
+                          lastDate:
+                              DateTime.now().add(const Duration(days: 365)),
+                          initialDateRange: _selectedDateRange,
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            _selectedDateRange = picked;
+                          });
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedLocation = null;
+                      _selectedCategory = null;
+                      _selectedDateRange = null;
+                    });
+                    Navigator.of(context).pop();
+                    _loadCampaigns(refresh: true);
+                  },
+                  child: const Text('Clear'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _loadCampaigns(refresh: true);
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -119,6 +278,13 @@ class _CampaignsPageState extends State<CampaignsPage> {
           ),
         ),
         actions: [
+          IconButton(
+            onPressed: _showFilterDialog,
+            icon: const Icon(
+              Icons.filter_list,
+              color: Color(0xFF007F8C),
+            ),
+          ),
           IconButton(
             onPressed: _navigateToCreateCampaign,
             icon: const Icon(

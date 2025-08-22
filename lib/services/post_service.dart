@@ -228,10 +228,17 @@ class PostService {
         users(*)
       ''').single();
 
-      // Update comments count
-      await _supabase.rpc('increment_post_comments', params: {
-        'post_id': postId,
-      });
+      // Update comments count manually
+      final postData = await _supabase
+          .from('posts')
+          .select('comments_count')
+          .eq('id', postId)
+          .single();
+
+      final currentCount = postData['comments_count'] as int? ?? 0;
+      await _supabase
+          .from('posts')
+          .update({'comments_count': currentCount + 1}).eq('id', postId);
 
       return CommentModel.fromJson(response);
     } catch (e) {

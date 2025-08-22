@@ -59,8 +59,10 @@ class CampaignService {
   }
 
   // Get all campaigns
-  Future<List<CampaignModel>> getAllCampaigns(
-      {int limit = 20, int offset = 0}) async {
+  Future<List<CampaignModel>> getAllCampaigns({
+    int limit = 20,
+    int offset = 0,
+  }) async {
     try {
       final response = await _supabase
           .from('campaigns')
@@ -81,9 +83,57 @@ class CampaignService {
     }
   }
 
+  // Get filtered campaigns
+  Future<List<CampaignModel>> getFilteredCampaigns({
+    int limit = 20,
+    int offset = 0,
+    String? location,
+    String? category,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    try {
+      var query = _supabase.from('campaigns').select('''
+            *,
+            users(*)
+          ''').eq('is_active', true);
+
+      // Apply filters
+      if (location != null && location.isNotEmpty) {
+        query = query.ilike('location', '%$location%');
+      }
+
+      if (category != null && category.isNotEmpty) {
+        query = query.eq('category', category);
+      }
+
+      if (startDate != null) {
+        query = query.gte('start_date', startDate.toIso8601String());
+      }
+
+      if (endDate != null) {
+        query = query.lte('end_date', endDate.toIso8601String());
+      }
+
+      final response = await query
+          .order('created_at', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      return (response as List)
+          .map((campaign) => CampaignModel.fromJson(campaign))
+          .toList();
+    } catch (e) {
+      print('Error getting filtered campaigns: $e');
+      return [];
+    }
+  }
+
   // Get campaigns by user
-  Future<List<CampaignModel>> getUserCampaigns(String userId,
-      {int limit = 20, int offset = 0}) async {
+  Future<List<CampaignModel>> getUserCampaigns(
+    String userId, {
+    int limit = 20,
+    int offset = 0,
+  }) async {
     try {
       final response = await _supabase
           .from('campaigns')
@@ -140,11 +190,13 @@ class CampaignService {
       if (description != null) updates['description'] = description;
       if (imageUrls != null) updates['image_urls'] = imageUrls;
       if (location != null) updates['location'] = location;
-      if (startDate != null)
+      if (startDate != null) {
         updates['start_date'] = startDate.toIso8601String();
+      }
       if (endDate != null) updates['end_date'] = endDate.toIso8601String();
-      if (maxParticipants != null)
+      if (maxParticipants != null) {
         updates['max_participants'] = maxParticipants;
+      }
       if (price != null) updates['price'] = price;
       if (category != null) updates['category'] = category;
       if (isActive != null) updates['is_active'] = isActive;
@@ -154,8 +206,10 @@ class CampaignService {
           .from('campaigns')
           .update(updates)
           .eq('id', campaignId)
-          .eq('user_id',
-              userId) // Ensure user can only update their own campaigns
+          .eq(
+            'user_id',
+            userId,
+          ) // Ensure user can only update their own campaigns
           .select('''
             *,
             users(*)
@@ -172,7 +226,9 @@ class CampaignService {
   Future<bool> deleteCampaign(String campaignId, String userId) async {
     try {
       await _supabase.from('campaigns').delete().eq('id', campaignId).eq(
-          'user_id', userId); // Ensure user can only delete their own campaigns
+            'user_id',
+            userId,
+          ); // Ensure user can only delete their own campaigns
 
       return true;
     } catch (e) {
@@ -265,9 +321,56 @@ class CampaignService {
     }
   }
 
+  // Join campaign and return new participant count
+  Future<int?> joinCampaignWithCount(String campaignId, String userId) async {
+    try {
+      // Check if user is already a participant
+      final existingParticipant = await _supabase
+          .from('campaign_participants')
+          .select('id')
+          .eq('campaign_id', campaignId)
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (existingParticipant != null) {
+        // Already joined, return current count
+        final campaign = await getCampaignById(campaignId);
+        return campaign?.currentParticipants ?? 0;
+      }
+
+      // Check if campaign has space
+      final campaign = await getCampaignById(campaignId);
+      if (campaign != null &&
+          campaign.maxParticipants != null &&
+          campaign.currentParticipants >= campaign.maxParticipants!) {
+        return null; // Campaign is full
+      }
+
+      // Add participant
+      await _supabase.from('campaign_participants').insert({
+        'campaign_id': campaignId,
+        'user_id': userId,
+      });
+
+      // Calculate new count
+      final newCount = (campaign?.currentParticipants ?? 0) + 1;
+
+      // Update participant count
+      await _supabase.from('campaigns').update({
+        'current_participants': newCount,
+      }).eq('id', campaignId);
+
+      return newCount;
+    } catch (e) {
+      print('Error joining campaign: $e');
+      return null;
+    }
+  }
+
   // Get campaign participants
   Future<List<Map<String, dynamic>>> getCampaignParticipants(
-      String campaignId) async {
+    String campaignId,
+  ) async {
     try {
       final response = await _supabase
           .from('campaign_participants')
@@ -296,7 +399,9 @@ class CampaignService {
             *,
             users(*)
           ''')
-          .or('title.ilike.%$query%,description.ilike.%$query%,location.ilike.%$query%,category.ilike.%$query%')
+          .or(
+            'title.ilike.%$query%,description.ilike.%$query%,location.ilike.%$query%,category.ilike.%$query%',
+          )
           .eq('is_active', true)
           .order('created_at', ascending: false)
           .limit(20);
@@ -310,9 +415,108 @@ class CampaignService {
     }
   }
 
+  // Like a campaign
+  Future<int> likeCampaign(String campaignId, String userId) async {
+    try {
+      // Check if already liked
+      final existingLike = await _supabase
+          .from('campaign_likes')
+          .select()
+          .eq('campaign_id', campaignId)
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (existingLike != null) {
+        // Already liked, return current count
+        final campaign = await _supabase
+            .from('campaigns')
+            .select('likes_count')
+            .eq('id', campaignId)
+            .single();
+        return campaign['likes_count'] as int? ?? 0;
+      }
+
+      // Add like
+      await _supabase.from('campaign_likes').insert({
+        'campaign_id': campaignId,
+        'user_id': userId,
+      });
+
+      // Update campaign likes count
+      final campaign = await _supabase
+          .from('campaigns')
+          .select('likes_count')
+          .eq('id', campaignId)
+          .single();
+
+      final currentCount = campaign['likes_count'] as int? ?? 0;
+      final newCount = currentCount + 1;
+
+      await _supabase
+          .from('campaigns')
+          .update({'likes_count': newCount}).eq('id', campaignId);
+
+      return newCount;
+    } catch (e) {
+      print('Error liking campaign: $e');
+      rethrow;
+    }
+  }
+
+  // Unlike a campaign
+  Future<int> unlikeCampaign(String campaignId, String userId) async {
+    try {
+      // Remove like
+      await _supabase
+          .from('campaign_likes')
+          .delete()
+          .eq('campaign_id', campaignId)
+          .eq('user_id', userId);
+
+      // Update campaign likes count
+      final campaign = await _supabase
+          .from('campaigns')
+          .select('likes_count')
+          .eq('id', campaignId)
+          .single();
+
+      final currentCount = campaign['likes_count'] as int? ?? 0;
+      final newCount = currentCount > 0 ? currentCount - 1 : 0;
+
+      await _supabase
+          .from('campaigns')
+          .update({'likes_count': newCount}).eq('id', campaignId);
+
+      return newCount;
+    } catch (e) {
+      print('Error unliking campaign: $e');
+      rethrow;
+    }
+  }
+
+  // Check if user has liked a campaign
+  Future<bool> hasUserLikedCampaign(String campaignId, String userId) async {
+    try {
+      final like = await _supabase
+          .from('campaign_likes')
+          .select()
+          .eq('campaign_id', campaignId)
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      return like != null;
+    } catch (e) {
+      print('Error checking campaign like status: $e');
+      return false;
+    }
+  }
+
   // Get campaigns by category
-  Future<List<CampaignModel>> getCampaignsByCategory(String category,
-      {int limit = 20, int offset = 0}) async {
+  Future<List<CampaignModel>> getCampaignsByCategory(
+    String category, {
+    int limit = 20,
+    int offset = 0,
+  }) async {
     try {
       final response = await _supabase
           .from('campaigns')
@@ -336,7 +540,8 @@ class CampaignService {
 
   // Subscribe to new campaigns
   RealtimeChannel subscribeToNewCampaigns(
-      Function(CampaignModel) onNewCampaign) {
+    Function(CampaignModel) onNewCampaign,
+  ) {
     return _supabase
         .channel('new_campaigns')
         .onPostgresChanges(

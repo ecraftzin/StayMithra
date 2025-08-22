@@ -1,40 +1,47 @@
 import 'package:flutter/material.dart';
-import 'package:staymitra/Profile/profileedit.dart';
-import 'package:staymitra/services/auth_service.dart';
 import 'package:staymitra/services/user_service.dart';
 import 'package:staymitra/services/post_service.dart';
 import 'package:staymitra/services/campaign_service.dart';
 import 'package:staymitra/services/follow_request_service.dart';
+import 'package:staymitra/services/auth_service.dart';
+import 'package:staymitra/services/chat_service.dart';
 import 'package:staymitra/config/supabase_config.dart';
 import 'package:staymitra/models/user_model.dart';
 import 'package:staymitra/models/post_model.dart';
 import 'package:staymitra/models/campaign_model.dart';
-import 'package:staymitra/Posts/post_detail_page.dart';
-import 'package:staymitra/Campaigns/campaign_detail_page.dart';
+import 'package:staymitra/ChatPage/real_chat_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:share_plus/share_plus.dart';
 
-class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+class UserProfilePage extends StatefulWidget {
+  final String userId;
+  final String? userName;
+
+  const UserProfilePage({
+    super.key,
+    required this.userId,
+    this.userName,
+  });
 
   @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  State<UserProfilePage> createState() => _UserProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage>
+class _UserProfilePageState extends State<UserProfilePage>
     with TickerProviderStateMixin {
-  final AuthService _authService = AuthService();
   final UserService _userService = UserService();
   final PostService _postService = PostService();
   final CampaignService _campaignService = CampaignService();
   final FollowRequestService _followRequestService = FollowRequestService();
+  final AuthService _authService = AuthService();
+  final ChatService _chatService = ChatService();
 
-  UserModel? _currentUser;
+  UserModel? _user;
   bool _isLoading = true;
   List<PostModel> _userPosts = [];
   List<CampaignModel> _userCampaigns = [];
   int _followersCount = 0;
   int _followingCount = 0;
+  String _followStatus = 'not_following';
 
   late TabController _tabController;
   int _selectedTab = 0;
@@ -51,11 +58,6 @@ class _ProfilePageState extends State<ProfilePage>
     _loadUserProfile();
   }
 
-  // Add method to refresh profile data
-  Future<void> refreshProfile() async {
-    await _loadUserProfile();
-  }
-
   @override
   void dispose() {
     _tabController.dispose();
@@ -64,19 +66,21 @@ class _ProfilePageState extends State<ProfilePage>
 
   Future<void> _loadUserProfile() async {
     try {
-      final currentUser = _authService.currentUser;
-      if (currentUser != null) {
-        final userProfile = await _userService.getUserById(currentUser.id);
+      final userProfile = await _userService.getUserById(widget.userId);
 
-        // Load user's posts and campaigns count
-        await _loadUserStats(currentUser.id);
+      if (userProfile != null) {
+        // Load user's posts and campaigns
+        await _loadUserStats(widget.userId);
 
         // Load follower counts
-        await _loadFollowerCounts(currentUser.id);
+        await _loadFollowerCounts(widget.userId);
+
+        // Load follow status
+        await _loadFollowStatus();
 
         if (mounted) {
           setState(() {
-            _currentUser = userProfile;
+            _user = userProfile;
             _isLoading = false;
           });
         }
@@ -91,7 +95,6 @@ class _ProfilePageState extends State<ProfilePage>
 
   Future<void> _loadUserStats(String userId) async {
     try {
-      // Load user's posts and campaigns
       final posts = await _postService.getUserPosts(userId);
       final campaigns = await _campaignService.getUserCampaigns(userId);
 
@@ -129,98 +132,198 @@ class _ProfilePageState extends State<ProfilePage>
     }
   }
 
-  Future<void> _signOut() async {
+  Future<void> _loadFollowStatus() async {
     try {
-      await _authService.signOut();
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/login');
+      final currentUser = _authService.currentUser;
+      if (currentUser != null && currentUser.id != widget.userId) {
+        final status = await _followRequestService.getFollowStatus(
+          currentUser.id,
+          widget.userId,
+        );
+        if (mounted) {
+          setState(() {
+            _followStatus = status;
+          });
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error signing out: $e')),
-      );
+      print('Error loading follow status: $e');
     }
   }
 
   String _getInitials() {
-    if (_currentUser?.fullName != null && _currentUser!.fullName!.isNotEmpty) {
-      return _currentUser!.fullName![0].toUpperCase();
-    } else if (_currentUser?.username != null &&
-        _currentUser!.username.isNotEmpty) {
-      return _currentUser!.username[0].toUpperCase();
+    if (_user?.fullName != null && _user!.fullName!.isNotEmpty) {
+      return _user!.fullName![0].toUpperCase();
+    } else if (_user?.username != null && _user!.username.isNotEmpty) {
+      return _user!.username[0].toUpperCase();
     } else {
       return 'U';
     }
   }
 
-  Widget _buildUserContentItem(dynamic item, double screenWidth) {
-    final isPost = item.runtimeType.toString().contains('Post');
-    final title =
-        isPost ? (item.content ?? 'Post') : (item.title ?? 'Campaign');
-    final subtitle = isPost ? 'Post' : 'Campaign';
+  List<Widget> _buildAppBarActions() {
+    final currentUser = _authService.currentUser;
+    if (currentUser == null || currentUser.id == widget.userId) {
+      return [];
+    }
 
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: isPost ? Colors.blue : const Color(0xFF007F8C),
-          child: Icon(
-            isPost ? Icons.post_add : Icons.campaign,
-            color: Colors.white,
-            size: 20,
-          ),
-        ),
-        title: Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: screenWidth * 0.04,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(
-            fontSize: screenWidth * 0.035,
-            color: Colors.grey[600],
-          ),
-        ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'edit') {
-              // TODO: Navigate to edit page
-              print('Edit ${isPost ? 'post' : 'campaign'}: ${item.id}');
-            } else if (value == 'delete') {
-              // TODO: Delete item
-              print('Delete ${isPost ? 'post' : 'campaign'}: ${item.id}');
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-              value: 'edit',
-              child: Row(
-                children: [
-                  Icon(Icons.edit, size: 20),
-                  SizedBox(width: 8),
-                  Text('Edit'),
-                ],
-              ),
+    return [
+      Padding(
+        padding: const EdgeInsets.only(right: 8.0),
+        child: ElevatedButton(
+          onPressed: _handleFollowAction,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _getFollowButtonColor(),
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
             ),
-            const PopupMenuItem(
-              value: 'delete',
-              child: Row(
-                children: [
-                  Icon(Icons.delete, size: 20, color: Colors.red),
-                  SizedBox(width: 8),
-                  Text('Delete', style: TextStyle(color: Colors.red)),
-                ],
-              ),
-            ),
-          ],
+          ),
+          child: Text(_getFollowButtonText()),
         ),
       ),
-    );
+      Padding(
+        padding: const EdgeInsets.only(right: 8.0),
+        child: ElevatedButton(
+          onPressed: _startChat,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: const Color(0xFF007F8C),
+            side: const BorderSide(color: Color(0xFF007F8C)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
+          child: const Text('Message'),
+        ),
+      ),
+    ];
+  }
+
+  String _getFollowButtonText() {
+    switch (_followStatus) {
+      case 'not_following':
+        return 'Follow';
+      case 'requested':
+        return 'Requested';
+      case 'following':
+      case 'mutual':
+        return 'Following';
+      case 'followed_by':
+        return 'Follow';
+      default:
+        return 'Follow';
+    }
+  }
+
+  Color _getFollowButtonColor() {
+    switch (_followStatus) {
+      case 'not_following':
+      case 'followed_by':
+        return const Color(0xFF007F8C);
+      case 'requested':
+        return Colors.orange;
+      case 'following':
+      case 'mutual':
+        return Colors.grey;
+      default:
+        return const Color(0xFF007F8C);
+    }
+  }
+
+  Future<void> _handleFollowAction() async {
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) return;
+
+    // Prevent users from following themselves
+    if (currentUser.id == widget.userId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You cannot follow yourself'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    bool success = false;
+    String message = '';
+
+    try {
+      switch (_followStatus) {
+        case 'not_following':
+        case 'followed_by':
+          success =
+              await _followRequestService.sendFollowRequest(widget.userId);
+          if (success) {
+            message = 'Follow request sent!';
+            setState(() => _followStatus = 'requested');
+          } else {
+            message = 'Failed to send follow request';
+          }
+          break;
+
+        case 'requested':
+          success =
+              await _followRequestService.cancelFollowRequest(widget.userId);
+          message =
+              success ? 'Follow request cancelled' : 'Failed to cancel request';
+          if (success) setState(() => _followStatus = 'not_following');
+          break;
+
+        case 'following':
+        case 'mutual':
+          success = await _followRequestService.unfollowUser(widget.userId);
+          message =
+              success ? 'Unfollowed ${_user?.username}' : 'Failed to unfollow';
+          if (success) setState(() => _followStatus = 'not_following');
+          break;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _startChat() async {
+    final currentUser = _authService.currentUser;
+    if (currentUser == null || _user == null) return;
+
+    try {
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => RealChatScreen(
+              peerId: widget.userId,
+              peerName: _user!.fullName ?? _user!.username ?? 'Unknown User',
+              peerAvatar: _user!.avatarUrl,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error starting chat: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -229,8 +332,30 @@ class _ProfilePageState extends State<ProfilePage>
     final screenHeight = MediaQuery.of(context).size.height;
 
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: Text(widget.userName ?? 'Profile'),
+          backgroundColor: const Color(0xFF007F8C),
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_user == null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('Profile'),
+          backgroundColor: const Color(0xFF007F8C),
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: Text('User not found'),
+        ),
       );
     }
 
@@ -247,28 +372,7 @@ class _ProfilePageState extends State<ProfilePage>
               flexibleSpace: FlexibleSpaceBar(
                 background: _buildProfileHeader(screenWidth, screenHeight),
               ),
-              actions: [
-                IconButton(
-                  onPressed: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const EditProfilePage(),
-                      ),
-                    );
-
-                    // Refresh profile data if edit was successful
-                    if (result == true) {
-                      _loadUserProfile();
-                    }
-                  },
-                  icon: const Icon(Icons.edit, color: Colors.white),
-                ),
-                IconButton(
-                  onPressed: _signOut,
-                  icon: const Icon(Icons.logout, color: Colors.white),
-                ),
-              ],
+              actions: _buildAppBarActions(),
             ),
           ];
         },
@@ -281,7 +385,7 @@ class _ProfilePageState extends State<ProfilePage>
                 children: [
                   _buildPostsGrid(),
                   _buildCampaignsGrid(),
-                  _buildMixedGrid(),
+                  _buildAllContentGrid(),
                 ],
               ),
             ),
@@ -309,10 +413,10 @@ class _ProfilePageState extends State<ProfilePage>
             // Profile Picture
             CircleAvatar(
               radius: screenWidth * 0.12,
-              backgroundImage: _currentUser?.avatarUrl != null
-                  ? NetworkImage(_currentUser!.avatarUrl!)
+              backgroundImage: _user?.avatarUrl != null
+                  ? NetworkImage(_user!.avatarUrl!)
                   : null,
-              child: _currentUser?.avatarUrl == null
+              child: _user?.avatarUrl == null
                   ? Text(
                       _getInitials(),
                       style: TextStyle(
@@ -326,18 +430,18 @@ class _ProfilePageState extends State<ProfilePage>
             SizedBox(height: screenHeight * 0.02),
             // Name and Username
             Text(
-              _currentUser?.fullName ?? _currentUser?.username ?? 'User',
+              _user?.fullName ?? _user?.username ?? 'User',
               style: TextStyle(
                 fontSize: screenWidth * 0.05,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
               ),
             ),
-            if (_currentUser?.bio != null && _currentUser!.bio!.isNotEmpty)
+            if (_user?.bio != null && _user!.bio!.isNotEmpty)
               Padding(
                 padding: EdgeInsets.only(top: screenHeight * 0.01),
                 child: Text(
-                  _currentUser!.bio!,
+                  _user!.bio!,
                   style: TextStyle(
                     fontSize: screenWidth * 0.035,
                     color: Colors.white70,
@@ -395,13 +499,13 @@ class _ProfilePageState extends State<ProfilePage>
       color: Colors.white,
       child: TabBar(
         controller: _tabController,
-        indicatorColor: const Color(0xFF007F8C),
         labelColor: const Color(0xFF007F8C),
         unselectedLabelColor: Colors.grey,
+        indicatorColor: const Color(0xFF007F8C),
         tabs: const [
-          Tab(icon: Icon(Icons.grid_on), text: 'Posts'),
-          Tab(icon: Icon(Icons.campaign), text: 'Campaigns'),
-          Tab(icon: Icon(Icons.apps), text: 'All'),
+          Tab(text: 'Posts'),
+          Tab(text: 'Campaigns'),
+          Tab(text: 'All'),
         ],
       ),
     );
@@ -417,12 +521,10 @@ class _ProfilePageState extends State<ProfilePage>
             SizedBox(height: 16),
             Text(
               'No posts yet',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Tap the + button to create your first post',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey,
+              ),
             ),
           ],
         ),
@@ -433,13 +535,13 @@ class _ProfilePageState extends State<ProfilePage>
       padding: const EdgeInsets.all(8),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
+        crossAxisSpacing: 4,
+        mainAxisSpacing: 4,
       ),
       itemCount: _userPosts.length,
       itemBuilder: (context, index) {
         final post = _userPosts[index];
-        return _buildGridItem(post, true);
+        return _buildContentTile(post, true);
       },
     );
   }
@@ -454,12 +556,10 @@ class _ProfilePageState extends State<ProfilePage>
             SizedBox(height: 16),
             Text(
               'No campaigns yet',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Create your first campaign to get started',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey,
+              ),
             ),
           ],
         ),
@@ -470,18 +570,18 @@ class _ProfilePageState extends State<ProfilePage>
       padding: const EdgeInsets.all(8),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
+        crossAxisSpacing: 4,
+        mainAxisSpacing: 4,
       ),
       itemCount: _userCampaigns.length,
       itemBuilder: (context, index) {
         final campaign = _userCampaigns[index];
-        return _buildGridItem(campaign, false);
+        return _buildContentTile(campaign, false);
       },
     );
   }
 
-  Widget _buildMixedGrid() {
+  Widget _buildAllContentGrid() {
     final allContent = <dynamic>[..._userPosts, ..._userCampaigns];
     allContent.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
@@ -494,12 +594,10 @@ class _ProfilePageState extends State<ProfilePage>
             SizedBox(height: 16),
             Text(
               'No content yet',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Start creating posts and campaigns',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey,
+              ),
             ),
           ],
         ),
@@ -510,37 +608,38 @@ class _ProfilePageState extends State<ProfilePage>
       padding: const EdgeInsets.all(8),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
+        crossAxisSpacing: 4,
+        mainAxisSpacing: 4,
       ),
       itemCount: allContent.length,
       itemBuilder: (context, index) {
         final item = allContent[index];
         final isPost = item is PostModel;
-        return _buildGridItem(item, isPost);
+        return _buildContentTile(item, isPost);
       },
     );
   }
 
-  Widget _buildGridItem(dynamic item, bool isPost) {
+  Widget _buildContentTile(dynamic item, bool isPost) {
     final imageUrls = isPost ? item.imageUrls : item.imageUrls;
     final videoUrls = isPost ? item.videoUrls : item.videoUrls;
-    final hasMedia = imageUrls.isNotEmpty || videoUrls.isNotEmpty;
+    final hasMedia =
+        (imageUrls?.isNotEmpty ?? false) || (videoUrls?.isNotEmpty ?? false);
 
     return GestureDetector(
       onTap: () => _showContentDetail(item, isPost),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.grey[200],
-          border: Border.all(color: Colors.grey[300]!),
+          color: Colors.grey[300],
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Stack(
           fit: StackFit.expand,
           children: [
             if (hasMedia) ...[
-              if (imageUrls.isNotEmpty)
+              if (imageUrls?.isNotEmpty ?? false)
                 CachedNetworkImage(
-                  imageUrl: imageUrls.first,
+                  imageUrl: imageUrls!.first,
                   fit: BoxFit.cover,
                   placeholder: (context, url) => Container(
                     color: Colors.grey[300],
@@ -553,7 +652,7 @@ class _ProfilePageState extends State<ProfilePage>
                     child: const Icon(Icons.error),
                   ),
                 )
-              else if (videoUrls.isNotEmpty)
+              else if (videoUrls?.isNotEmpty ?? false)
                 Container(
                   color: Colors.black,
                   child: const Center(
@@ -569,7 +668,7 @@ class _ProfilePageState extends State<ProfilePage>
                 color: Colors.grey[300],
                 child: Center(
                   child: Icon(
-                    isPost ? Icons.text_fields : Icons.campaign,
+                    isPost ? Icons.photo : Icons.campaign,
                     color: Colors.grey[600],
                     size: 32,
                   ),
@@ -592,52 +691,6 @@ class _ProfilePageState extends State<ProfilePage>
                 ),
               ),
             ),
-            // Edit/Delete options
-            Positioned(
-              bottom: 4,
-              right: 4,
-              child: PopupMenuButton<String>(
-                icon: const Icon(
-                  Icons.more_vert,
-                  color: Colors.white,
-                  size: 16,
-                ),
-                onSelected: (value) =>
-                    _handleContentAction(value, item, isPost),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit, size: 16),
-                        SizedBox(width: 8),
-                        Text('Edit'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete, size: 16, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('Delete', style: TextStyle(color: Colors.red)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'share',
-                    child: Row(
-                      children: [
-                        Icon(Icons.share, size: 16),
-                        SizedBox(width: 8),
-                        Text('Share'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
@@ -645,130 +698,29 @@ class _ProfilePageState extends State<ProfilePage>
   }
 
   void _showContentDetail(dynamic item, bool isPost) {
-    if (isPost) {
-      // Navigate to post detail page
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PostDetailPage(post: item),
-        ),
-      );
-    } else {
-      // Navigate to campaign detail page
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => CampaignDetailPage(campaign: item),
-        ),
-      );
-    }
-  }
-
-  void _handleContentAction(String action, dynamic item, bool isPost) {
-    switch (action) {
-      case 'edit':
-        _editContent(item, isPost);
-        break;
-      case 'delete':
-        _deleteContent(item, isPost);
-        break;
-      case 'share':
-        _shareContent(item, isPost);
-        break;
-    }
-  }
-
-  void _editContent(dynamic item, bool isPost) {
-    // TODO: Navigate to edit page
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Edit ${isPost ? 'post' : 'campaign'}: ${item.id}'),
-      ),
-    );
-  }
-
-  void _deleteContent(dynamic item, bool isPost) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Delete ${isPost ? 'Post' : 'Campaign'}'),
-        content: Text(
-            'Are you sure you want to delete this ${isPost ? 'post' : 'campaign'}?'),
+        title: Text(isPost ? 'Post' : 'Campaign'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              item.title ?? 'No title',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(item.description ?? 'No description'),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _performDelete(item, isPost);
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: const Text('Close'),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _performDelete(dynamic item, bool isPost) async {
-    try {
-      if (isPost) {
-        await _postService.deletePost(item.id, _currentUser!.id);
-        if (mounted) {
-          setState(() {
-            _userPosts.removeWhere((post) => post.id == item.id);
-          });
-        }
-      } else {
-        await _campaignService.deleteCampaign(item.id, _currentUser!.id);
-        if (mounted) {
-          setState(() {
-            _userCampaigns.removeWhere((campaign) => campaign.id == item.id);
-          });
-        }
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:
-                Text('${isPost ? 'Post' : 'Campaign'} deleted successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error deleting ${isPost ? 'post' : 'campaign'}: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  void _shareContent(dynamic item, bool isPost) async {
-    try {
-      final String shareText = isPost
-          ? 'Check out this post: ${item.content}'
-          : 'Join this campaign: ${item.title} - ${item.description}';
-
-      final String shareUrl =
-          'https://staymitra.app/${isPost ? 'post' : 'campaign'}/${item.id}';
-
-      await Share.share('$shareText\n\n$shareUrl');
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error sharing: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 }

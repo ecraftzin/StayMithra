@@ -52,11 +52,11 @@ class _SignInPageState extends State<SignInPage> {
                         : Icons.error,
                     color: Colors.white,
                   ),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       response['message'] ?? 'Login failed',
-                      style: TextStyle(color: Colors.white),
+                      style: const TextStyle(color: Colors.white),
                     ),
                   ),
                 ],
@@ -64,7 +64,7 @@ class _SignInPageState extends State<SignInPage> {
               backgroundColor: response['needsVerification'] == true
                   ? Colors.orange
                   : Colors.red,
-              duration: Duration(seconds: 4),
+              duration: const Duration(seconds: 4),
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -168,7 +168,7 @@ class _SignInPageState extends State<SignInPage> {
           SnackBar(
             content: Text(errorMessage),
             backgroundColor: Colors.orange,
-            duration: Duration(seconds: 4),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -192,7 +192,7 @@ class _SignInPageState extends State<SignInPage> {
           SnackBar(
             content: Text(errorMessage),
             backgroundColor: Colors.orange,
-            duration: Duration(seconds: 4),
+            duration: const Duration(seconds: 4),
           ),
         );
       }

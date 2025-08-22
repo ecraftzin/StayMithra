@@ -40,11 +40,7 @@ class ChatService {
   // Create or get existing chat between two users
   Future<ChatModel?> createOrGetChat(String user1Id, String user2Id) async {
     try {
-      // Check if users are following each other (mutual follow required for chat)
-      final isFollowing = await _checkMutualFollow(user1Id, user2Id);
-      if (!isFollowing) {
-        throw Exception('Users must follow each other to start a chat');
-      }
+      // Note: Follow check is handled in the calling code
 
       // Ensure consistent ordering (smaller ID first)
       final sortedUser1 = user1Id.compareTo(user2Id) < 0 ? user1Id : user2Id;
@@ -55,8 +51,8 @@ class ChatService {
           .from('chats')
           .select('''
             *,
-            users!chats_user1_id_fkey(*),
-            users!chats_user2_id_fkey(*)
+            user1:users!chats_user1_id_fkey(*),
+            user2:users!chats_user2_id_fkey(*)
           ''')
           .eq('user1_id', sortedUser1)
           .eq('user2_id', sortedUser2)
@@ -72,8 +68,8 @@ class ChatService {
         'user2_id': sortedUser2,
       }).select('''
             *,
-            users!chats_user1_id_fkey(*),
-            users!chats_user2_id_fkey(*)
+            user1:users!chats_user1_id_fkey(*),
+            user2:users!chats_user2_id_fkey(*)
           ''').single();
 
       return _parseChatWithUsers(response, user1Id);
@@ -91,7 +87,8 @@ class ChatService {
           .select('''
             *,
             user1:users!chats_user1_id_fkey(*),
-            user2:users!chats_user2_id_fkey(*)
+            user2:users!chats_user2_id_fkey(*),
+            messages:messages(*)
           ''')
           .or('user1_id.eq.$userId,user2_id.eq.$userId')
           .order('last_message_at', ascending: false);
@@ -121,6 +118,7 @@ class ChatService {
         'sender_id': senderId,
         'content': content,
         'message_type': messageType,
+        'is_read': false, // Explicitly set as unread
       }).select('''
             *,
             sender:users(*)
@@ -164,15 +162,40 @@ class ChatService {
     }
   }
 
-  // Mark messages as read
+  // Mark messages as read - simplified approach
   Future<void> markMessagesAsRead(String chatId, String userId) async {
     try {
-      await _supabase
+      print('DEBUG: Marking messages as read for chat $chatId, user $userId');
+
+      // First, check how many messages exist in this chat
+      final allMessages = await _supabase
+          .from('messages')
+          .select('id, sender_id, is_read')
+          .eq('chat_id', chatId);
+      print('DEBUG: Found ${allMessages.length} total messages in chat');
+
+      final otherUserMessages =
+          allMessages.where((msg) => msg['sender_id'] != userId).toList();
+      print(
+          'DEBUG: Found ${otherUserMessages.length} messages from other users');
+
+      // Update ALL messages in this chat that are not from current user to be unread first
+      final fixResult = await _supabase
+          .from('messages')
+          .update({'is_read': false})
+          .eq('chat_id', chatId)
+          .neq('sender_id', userId)
+          .select();
+      print('DEBUG: Set ${fixResult.length} messages to unread first');
+
+      // Then mark them all as read
+      final result = await _supabase
           .from('messages')
           .update({'is_read': true})
           .eq('chat_id', chatId)
           .neq('sender_id', userId)
-          .eq('is_read', false);
+          .select();
+      print('DEBUG: Marked ${result.length} messages as read');
     } catch (e) {
       print('Error marking messages as read: $e');
     }
@@ -235,34 +258,41 @@ class ChatService {
   ChatModel? _parseChatWithUsers(
       Map<String, dynamic> chatData, String currentUserId) {
     try {
-      final user1Data = chatData['users'] != null
-          ? (chatData['users'] is List
-              ? (chatData['users'] as List).first
-              : chatData['users'])
-          : null;
-
-      final user2Data = chatData['users'] != null
-          ? (chatData['users'] is List
-              ? (chatData['users'] as List).last
-              : chatData['users'])
-          : null;
+      final user1Data = chatData['user1'];
+      final user2Data = chatData['user2'];
 
       // Determine which user is the "other" user
       UserModel? otherUser;
       if (user1Data != null && user1Data['id'] != currentUserId) {
-        otherUser = UserModel.fromJson(user1Data);
+        try {
+          otherUser = UserModel.fromJson(user1Data);
+        } catch (e) {
+          print('Error creating UserModel from user1Data: $e');
+        }
       } else if (user2Data != null && user2Data['id'] != currentUserId) {
-        otherUser = UserModel.fromJson(user2Data);
+        try {
+          otherUser = UserModel.fromJson(user2Data);
+        } catch (e) {
+          print('Error creating UserModel from user2Data: $e');
+        }
       }
 
-      // Get last message if available
+      // Get last message and calculate unread count
       MessageModel? lastMessage;
+      int unreadCount = 0;
       if (chatData['messages'] != null &&
           (chatData['messages'] as List).isNotEmpty) {
         final messages = chatData['messages'] as List;
         messages.sort((a, b) => DateTime.parse(b['created_at'])
             .compareTo(DateTime.parse(a['created_at'])));
         lastMessage = MessageModel.fromJson(messages.first);
+
+        // Count unread messages (messages not sent by current user and not read)
+        unreadCount = messages
+            .where((msg) =>
+                msg['sender_id'] != currentUserId &&
+                (msg['is_read'] == false || msg['is_read'] == null))
+            .length;
       }
 
       return ChatModel(
@@ -273,6 +303,7 @@ class ChatService {
         createdAt: DateTime.parse(chatData['created_at']),
         otherUser: otherUser,
         lastMessage: lastMessage,
+        unreadCount: unreadCount,
       );
     } catch (e) {
       print('Error parsing chat with users: $e');

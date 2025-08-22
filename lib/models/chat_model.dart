@@ -8,6 +8,7 @@ class ChatModel {
   final DateTime createdAt;
   final UserModel? otherUser; // The other user in the chat
   final MessageModel? lastMessage; // Last message for preview
+  final int unreadCount; // Number of unread messages
 
   ChatModel({
     required this.id,
@@ -17,6 +18,7 @@ class ChatModel {
     required this.createdAt,
     this.otherUser,
     this.lastMessage,
+    this.unreadCount = 0,
   });
 
   factory ChatModel.fromJson(Map<String, dynamic> json) {
@@ -26,8 +28,13 @@ class ChatModel {
       user2Id: json['user2_id'] as String,
       lastMessageAt: DateTime.parse(json['last_message_at'] as String),
       createdAt: DateTime.parse(json['created_at'] as String),
-      otherUser: json['other_user'] != null ? UserModel.fromJson(json['other_user']) : null,
-      lastMessage: json['last_message'] != null ? MessageModel.fromJson(json['last_message']) : null,
+      otherUser: json['other_user'] != null
+          ? UserModel.fromJson(json['other_user'])
+          : null,
+      lastMessage: json['last_message'] != null
+          ? MessageModel.fromJson(json['last_message'])
+          : null,
+      unreadCount: json['unread_count'] as int? ?? 0,
     );
   }
 
@@ -72,7 +79,8 @@ class MessageModel {
       messageType: json['message_type'] as String? ?? 'text',
       isRead: json['is_read'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
-      sender: json['sender'] != null ? UserModel.fromJson(json['sender']) : null,
+      sender:
+          json['sender'] != null ? UserModel.fromJson(json['sender']) : null,
     );
   }
 

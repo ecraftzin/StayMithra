@@ -20,8 +20,8 @@ class _SignupPageState extends State<SignupPage> {
   final _locationController = TextEditingController();
   final _authService = AuthService();
   bool _isLoading = false;
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
+  final bool _obscurePassword = true;
+  final bool _obscureConfirmPassword = true;
 
   @override
   void dispose() {
@@ -97,7 +97,7 @@ class _SignupPageState extends State<SignupPage> {
       if (response.user != null && mounted) {
         // Show success toast
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Row(
               children: [
                 Icon(Icons.check_circle, color: Colors.white),
@@ -117,7 +117,7 @@ class _SignupPageState extends State<SignupPage> {
         );
 
         // Wait a moment for user to see the toast, then navigate
-        await Future.delayed(Duration(seconds: 1));
+        await Future.delayed(const Duration(seconds: 1));
 
         if (mounted) {
           Navigator.pushReplacement(

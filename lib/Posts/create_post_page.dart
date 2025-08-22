@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:staymitra/services/post_service.dart';
 import 'package:staymitra/services/auth_service.dart';
 import 'package:staymitra/services/storage_service.dart';
-import 'dart:io';
 
 class CreatePostPage extends StatefulWidget {
   const CreatePostPage({super.key});
@@ -21,6 +21,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
   final ImagePicker _imagePicker = ImagePicker();
 
   List<XFile> _selectedImages = [];
+  List<XFile> _selectedVideos = [];
   bool _isLoading = false;
 
   @override
@@ -36,7 +37,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
       if (images.isNotEmpty) {
         setState(() {
           _selectedImages.addAll(images);
-          // Limit to 5 images
+          // Limit to 5 images total
           if (_selectedImages.length > 5) {
             _selectedImages = _selectedImages.take(5).toList();
           }
@@ -52,9 +53,37 @@ class _CreatePostPageState extends State<CreatePostPage> {
     }
   }
 
+  Future<void> _pickVideos() async {
+    try {
+      final XFile? video =
+          await _imagePicker.pickVideo(source: ImageSource.gallery);
+      if (video != null) {
+        setState(() {
+          _selectedVideos.add(video);
+          // Limit to 3 videos total
+          if (_selectedVideos.length > 3) {
+            _selectedVideos = _selectedVideos.take(3).toList();
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking video: $e')),
+        );
+      }
+    }
+  }
+
   void _removeImage(int index) {
     setState(() {
       _selectedImages.removeAt(index);
+    });
+  }
+
+  void _removeVideo(int index) {
+    setState(() {
+      _selectedVideos.removeAt(index);
     });
   }
 
@@ -87,17 +116,35 @@ class _CreatePostPageState extends State<CreatePostPage> {
       List<String> imageUrls = [];
       if (_selectedImages.isNotEmpty) {
         print('Uploading ${_selectedImages.length} images...');
-        final imageFiles =
-            _selectedImages.map((xFile) => File(xFile.path)).toList();
-        imageUrls = await _storageService.uploadImages(imageFiles, 'posts',
-            folder: 'user_posts');
+        for (final xFile in _selectedImages) {
+          final imageUrl = await _storageService
+              .uploadImageFromXFile(xFile, 'posts', folder: 'user_posts');
+          if (imageUrl != null) {
+            imageUrls.add(imageUrl);
+          }
+        }
         print('Upload completed. URLs: $imageUrls');
+      }
+
+      // Upload videos to Supabase Storage
+      List<String> videoUrls = [];
+      if (_selectedVideos.isNotEmpty) {
+        print('Uploading ${_selectedVideos.length} videos...');
+        for (final xFile in _selectedVideos) {
+          final videoUrl = await _storageService
+              .uploadVideoFromXFile(xFile, 'posts', folder: 'user_posts');
+          if (videoUrl != null) {
+            videoUrls.add(videoUrl);
+          }
+        }
+        print('Video upload completed. URLs: $videoUrls');
       }
 
       final post = await _postService.createPost(
         userId: currentUser.id,
         content: _contentController.text.trim(),
         imageUrls: imageUrls,
+        videoUrls: videoUrls,
         location: _locationController.text.trim().isEmpty
             ? null
             : _locationController.text.trim(),
@@ -283,11 +330,35 @@ class _CreatePostPageState extends State<CreatePostPage> {
                                 ClipRRect(
                                   borderRadius:
                                       BorderRadius.circular(screenWidth * 0.02),
-                                  child: Image.file(
-                                    File(_selectedImages[index].path),
-                                    width: screenWidth * 0.2,
-                                    height: screenWidth * 0.2,
-                                    fit: BoxFit.cover,
+                                  child: FutureBuilder<Uint8List>(
+                                    future:
+                                        _selectedImages[index].readAsBytes(),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.hasData) {
+                                        return Image.memory(
+                                          snapshot.data!,
+                                          width: screenWidth * 0.2,
+                                          height: screenWidth * 0.2,
+                                          fit: BoxFit.cover,
+                                        );
+                                      } else if (snapshot.hasError) {
+                                        return Container(
+                                          width: screenWidth * 0.2,
+                                          height: screenWidth * 0.2,
+                                          color: Colors.grey[300],
+                                          child: const Icon(Icons.error),
+                                        );
+                                      } else {
+                                        return Container(
+                                          width: screenWidth * 0.2,
+                                          height: screenWidth * 0.2,
+                                          color: Colors.grey[200],
+                                          child: const Center(
+                                            child: CircularProgressIndicator(),
+                                          ),
+                                        );
+                                      }
+                                    },
                                   ),
                                 ),
                                 Positioned(
@@ -295,6 +366,101 @@ class _CreatePostPageState extends State<CreatePostPage> {
                                   right: 4,
                                   child: GestureDetector(
                                     onTap: () => _removeImage(index),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(2),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.red,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.close,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            // Video Picker Section
+            Container(
+              padding: EdgeInsets.all(screenWidth * 0.04),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(screenWidth * 0.03),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withValues(alpha: 0.1),
+                    blurRadius: 5,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.videocam, color: Colors.grey),
+                      SizedBox(width: screenWidth * 0.02),
+                      Text(
+                        'Add Videos',
+                        style: TextStyle(
+                          fontSize: screenWidth * 0.04,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: _pickVideos,
+                        child: Text(
+                          'Select',
+                          style: TextStyle(
+                            color: const Color(0xFF007F8C),
+                            fontSize: screenWidth * 0.035,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_selectedVideos.isNotEmpty) ...[
+                    SizedBox(height: screenHeight * 0.01),
+                    SizedBox(
+                      height: screenWidth * 0.2,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _selectedVideos.length,
+                        itemBuilder: (context, index) {
+                          return Container(
+                            margin: EdgeInsets.only(right: screenWidth * 0.02),
+                            width: screenWidth * 0.2,
+                            height: screenWidth * 0.2,
+                            decoration: BoxDecoration(
+                              color: Colors.black,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Stack(
+                              children: [
+                                const Center(
+                                  child: Icon(
+                                    Icons.play_circle_filled,
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: GestureDetector(
+                                    onTap: () => _removeVideo(index),
                                     child: Container(
                                       padding: const EdgeInsets.all(2),
                                       decoration: const BoxDecoration(
